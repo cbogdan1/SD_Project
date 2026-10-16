@@ -1,0 +1,39 @@
+version: '3.8'
+
+services:
+  postgres-db:
+    image: postgres:15-alpine
+    container_name: project-postgres
+    environment:
+      POSTGRES_DB: project_sd
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: root
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    networks:
+      - app-network
+
+  spring-app:
+    build: .
+    container_name: project-spring-app
+    ports:
+      - "8080:8080"
+    environment:
+      - DB_IP=postgres-db
+      - DB_PORT=5432
+      - DB_USER=postgres
+      - DB_PASSWORD=root
+      - DB_DBNAME=project_sd
+    depends_on:
+      - postgres-db
+    networks:
+      - app-network
+
+volumes:
+  pgdata:
+
+networks:
+  app-network:
+    driver: bridge
