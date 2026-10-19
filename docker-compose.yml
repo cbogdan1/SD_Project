@@ -1,39 +1,111 @@
 version: '3.8'
 
 services:
-  postgres-db:
+  reverse-proxy:
+    image: traefik:v3.6
+    container_name: reverse-proxy
+    command:
+      - --api.insecure=true
+      - --providers.docker=true
+      - --providers.docker.exposedbydefault=false
+      - --providers.docker.network=app-network
+      - --entrypoints.web.address=:80
+    ports:
+      - "80:80"
+      - "8082:8080" # Traefik dashboard
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - app-network
+
+  user-db:
     image: postgres:15-alpine
-    container_name: project-postgres
+    container_name: user-postgres
     environment:
-      POSTGRES_DB: project_sd
+      POSTGRES_DB: user_sd
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: root
     ports:
       - "5432:5432"
     volumes:
-      - pgdata:/var/lib/postgresql/data
+      - user-pgdata:/var/lib/postgresql/data
     networks:
       - app-network
 
-  spring-app:
-    build: .
-    container_name: project-spring-app
-    ports:
-      - "8080:8080"
+  device-db:
+    image: postgres:15-alpine
+    container_name: device-postgres
     environment:
-      - DB_IP=postgres-db
+      POSTGRES_DB: device_sd
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: root
+    ports:
+      - "5433:5432"
+    volumes:
+      - device-pgdata:/var/lib/postgresql/data
+    networks:
+      - app-network
+
+  # no container_name / ports: required so `--scale user-service=N` works; Traefik balances the replicas
+  user-service:
+    build: ./services/user_management
+    environment:
+      - DB_IP=user-db
       - DB_PORT=5432
       - DB_USER=postgres
       - DB_PASSWORD=root
-      - DB_DBNAME=project_sd
+      - DB_DBNAME=user_sd
     depends_on:
-      - postgres-db
+      - user-db
     networks:
       - app-network
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.users.rule=PathPrefix(`/users`)
+      - traefik.http.routers.users.entrypoints=web
+      - traefik.http.routers.users.middlewares=users-strip
+      # controllers are mapped at /person, so /users/person -> /person
+      - traefik.http.middlewares.users-strip.stripprefix.prefixes=/users
+      - traefik.http.services.users.loadbalancer.server.port=8080
+
+  device-service:
+    build: ./services/device_management
+    environment:
+      - DB_IP=device-db
+      - DB_PORT=5432
+      - DB_USER=postgres
+      - DB_PASSWORD=root
+      - DB_DBNAME=device_sd
+    depends_on:
+      - device-db
+    networks:
+      - app-network
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.devices.rule=PathPrefix(`/devices`)
+      - traefik.http.routers.devices.entrypoints=web
+      - traefik.http.routers.devices.middlewares=devices-strip
+      # controllers are mapped at /device, so /devices/device -> /device
+      - traefik.http.middlewares.devices-strip.stripprefix.prefixes=/devices
+      - traefik.http.services.devices.loadbalancer.server.port=8081
+
+  frontend:
+    build: ./frontend
+    networks:
+      - app-network
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.frontend.rule=PathPrefix(`/`)
+      - traefik.http.routers.frontend.entrypoints=web
+      # lowest priority: /users and /devices win, everything else goes to the SPA
+      - traefik.http.routers.frontend.priority=1
+      - traefik.http.services.frontend.loadbalancer.server.port=80
 
 volumes:
-  pgdata:
+  user-pgdata:
+  device-pgdata:
 
 networks:
   app-network:
+    name: app-network
     driver: bridge
