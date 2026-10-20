@@ -1,10 +1,17 @@
+import { inject } from '@angular/core';
 import { Routes } from '@angular/router';
-import { UsersComponent } from './users.component';
-import { DevicesComponent } from './devices.component';
+import { AuthService } from './auth/auth.service';
+import { roleGuard } from './auth/role.guard';
+import { LoginComponent } from './pages/login.component';
+import { AdminUsersComponent } from './pages/admin-users.component';
+import { AdminDevicesComponent } from './pages/admin-devices.component';
+import { MyDevicesComponent } from './pages/my-devices.component';
 
-// Paths must not start with /users or /devices: Traefik sends those prefixes to the backends, so a refresh would miss the SPA.
+// Paths must not start with /users, /devices or /auth: Traefik sends those prefixes to the backends, so a refresh would miss the SPA.
 export const routes: Routes = [
-  { path: 'people', component: UsersComponent },   // pe pathul /people se incarca componeneta UserComponent
-  { path: 'device-list', component: DevicesComponent },
-  { path: '**', redirectTo: 'people' },
+  { path: 'login', component: LoginComponent },
+  { path: 'admin/users', component: AdminUsersComponent, canActivate: [roleGuard('ADMIN')] },
+  { path: 'admin/devices', component: AdminDevicesComponent, canActivate: [roleGuard('ADMIN')] },
+  { path: 'my-devices', component: MyDevicesComponent, canActivate: [roleGuard('CLIENT')] },
+  { path: '**', redirectTo: () => inject(AuthService).homeUrl() },
 ];

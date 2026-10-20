@@ -27,13 +27,19 @@ public class Device implements Serializable {
     @Column(name = "max_energy_consumption", nullable = false)
     private double maxEnergyConsumption;
 
+    // owner's Person id from user-service; null = unassigned (no FK, it lives in another database)
+    @Type(type = "uuid-binary")
+    @Column(name = "user_id")
+    private UUID userId;
+
     public Device() {
     }
 
-    public Device(String description, String address, double maxEnergyConsumption) {
+    public Device(String description, String address, double maxEnergyConsumption, UUID userId) {
         this.description = description;
         this.address = address;
         this.maxEnergyConsumption = maxEnergyConsumption;
+        this.userId = userId;
     }
 
     public UUID getId() {
@@ -66,5 +72,13 @@ public class Device implements Serializable {
 
     public void setMaxEnergyConsumption(double maxEnergyConsumption) {
         this.maxEnergyConsumption = maxEnergyConsumption;
+    }
+
+    public UUID getUserId() {
+        return userId;
+    }
+
+    public void setUserId(UUID userId) {
+        this.userId = userId;
     }
 }

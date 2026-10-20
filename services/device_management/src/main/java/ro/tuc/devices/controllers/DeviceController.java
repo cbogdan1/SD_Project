@@ -47,4 +47,15 @@ public class DeviceController {
         deviceService.delete(id);
         return new ResponseEntity<>(HttpStatus.NO_CONTENT);
     }
+
+    @GetMapping(value = EndpointPaths.USER_ID)
+    public ResponseEntity<List<DeviceDTO>> getDevicesByUser(@PathVariable("userId") UUID userId) {
+        return new ResponseEntity<>(deviceService.findDevicesByUser(userId), HttpStatus.OK);
+    }
+
+    @DeleteMapping(value = EndpointPaths.USER_ID)
+    public ResponseEntity<Void> unassignUser(@PathVariable("userId") UUID userId) {
+        deviceService.unassignUser(userId);
+        return new ResponseEntity<>(HttpStatus.NO_CONTENT);
+    }
 }

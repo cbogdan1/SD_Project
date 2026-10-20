@@ -9,10 +9,11 @@ public class DeviceBuilder {
     }
 
     public static DeviceDTO toDeviceDTO(Device device) {
-        return new DeviceDTO(device.getId(), device.getDescription(), device.getAddress(), device.getMaxEnergyConsumption());
+        return new DeviceDTO(device.getId(), device.getDescription(), device.getAddress(),
+                device.getMaxEnergyConsumption(), device.getUserId());
     }
 
     public static Device toEntity(DeviceDTO dto) {
-        return new Device(dto.getDescription(), dto.getAddress(), dto.getMaxEnergyConsumption());
+        return new Device(dto.getDescription(), dto.getAddress(), dto.getMaxEnergyConsumption(), dto.getUserId());
     }
 }

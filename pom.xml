@@ -18,6 +18,7 @@
         <module>common</module>
         <module>services/user_management</module>
         <module>services/device_management</module>
+        <module>services/auth_management</module>
     </modules>
 
     <properties>

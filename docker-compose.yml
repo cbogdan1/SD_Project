@@ -29,6 +29,10 @@ services:
       - "5432:5432"
     volumes:
       - user-pgdata:/var/lib/postgresql/data
+    healthcheck: &pg-healthcheck
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 3s
+      retries: 20
     networks:
       - app-network
 
@@ -43,8 +47,54 @@ services:
       - "5433:5432"
     volumes:
       - device-pgdata:/var/lib/postgresql/data
+    healthcheck: *pg-healthcheck
     networks:
       - app-network
+
+  auth-db:
+    image: postgres:15-alpine
+    container_name: auth-postgres
+    environment:
+      POSTGRES_DB: auth_sd
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: root
+    ports:
+      - "5434:5432"
+    volumes:
+      - auth-pgdata:/var/lib/postgresql/data
+    healthcheck: *pg-healthcheck
+    networks:
+      - app-network
+
+  auth-service:
+    build: ./services/auth_management
+    environment:
+      - DB_IP=auth-db
+      - DB_PORT=5432
+      - DB_USER=postgres
+      - DB_PASSWORD=root
+      - DB_DBNAME=auth_sd
+      # override in a .env file next to this one; must be at least 32 characters
+      - JWT_SECRET=${JWT_SECRET:-dev-only-secret-change-me-0123456789abcdef}
+      - ADMIN_USERNAME=${ADMIN_USERNAME:-admin}
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD:-admin}
+      - USER_SERVICE_URL=http://user-service:8080
+    depends_on:
+      auth-db:
+        condition: service_healthy
+    networks:
+      - app-network
+    labels:
+      - traefik.enable=true
+      # only login/register are public; /validate and /credentials stay internal
+      - traefik.http.routers.auth.rule=Path(`/auth/login`) || Path(`/auth/register`)
+      - traefik.http.routers.auth.entrypoints=web
+      - traefik.http.routers.auth.middlewares=auth-strip
+      - traefik.http.middlewares.auth-strip.stripprefix.prefixes=/auth
+      - traefik.http.services.auth.loadbalancer.server.port=8083
+      # ForwardAuth: Traefik asks auth-service /validate before every /users and /devices request
+      - traefik.http.middlewares.jwt-auth.forwardauth.address=http://auth-service:8083/validate
+      - traefik.http.middlewares.jwt-auth.forwardauth.authResponseHeaders=X-User-Id,X-User-Role
 
   # no container_name / ports: required so `--scale user-service=N` works; Traefik balances the replicas
   user-service:
@@ -55,15 +105,19 @@ services:
       - DB_USER=postgres
       - DB_PASSWORD=root
       - DB_DBNAME=user_sd
+      - AUTH_SERVICE_URL=http://auth-service:8083
+      - DEVICE_SERVICE_URL=http://device-service:8081
     depends_on:
-      - user-db
+      user-db:
+        condition: service_healthy
     networks:
       - app-network
     labels:
       - traefik.enable=true
       - traefik.http.routers.users.rule=PathPrefix(`/users`)
       - traefik.http.routers.users.entrypoints=web
-      - traefik.http.routers.users.middlewares=users-strip
+      # jwt-auth runs before the strip, so /validate sees the full /users/... path
+      - traefik.http.routers.users.middlewares=jwt-auth,users-strip
       # controllers are mapped at /person, so /users/person -> /person
       - traefik.http.middlewares.users-strip.stripprefix.prefixes=/users
       - traefik.http.services.users.loadbalancer.server.port=8080
@@ -77,14 +131,15 @@ services:
       - DB_PASSWORD=root
       - DB_DBNAME=device_sd
     depends_on:
-      - device-db
+      device-db:
+        condition: service_healthy
     networks:
       - app-network
     labels:
       - traefik.enable=true
       - traefik.http.routers.devices.rule=PathPrefix(`/devices`)
       - traefik.http.routers.devices.entrypoints=web
-      - traefik.http.routers.devices.middlewares=devices-strip
+      - traefik.http.routers.devices.middlewares=jwt-auth,devices-strip
       # controllers are mapped at /device, so /devices/device -> /device
       - traefik.http.middlewares.devices-strip.stripprefix.prefixes=/devices
       - traefik.http.services.devices.loadbalancer.server.port=8081
@@ -97,13 +152,14 @@ services:
       - traefik.enable=true
       - traefik.http.routers.frontend.rule=PathPrefix(`/`)
       - traefik.http.routers.frontend.entrypoints=web
-      # lowest priority: /users and /devices win, everything else goes to the SPA
+      # lowest priority: /users, /devices and /auth win, everything else goes to the SPA
       - traefik.http.routers.frontend.priority=1
       - traefik.http.services.frontend.loadbalancer.server.port=80
 
 volumes:
   user-pgdata:
   device-pgdata:
+  auth-pgdata:
 
 networks:
   app-network:

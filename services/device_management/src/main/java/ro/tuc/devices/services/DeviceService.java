@@ -3,6 +3,7 @@ package ro.tuc.devices.services;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import ro.tuc.common.handlers.exceptions.model.ResourceNotFoundException;
 import ro.tuc.devices.dtos.DeviceDTO;
 import ro.tuc.devices.dtos.builders.DeviceBuilder;
@@ -43,11 +44,25 @@ public class DeviceService {
         device.setDescription(dto.getDescription());
         device.setAddress(dto.getAddress());
         device.setMaxEnergyConsumption(dto.getMaxEnergyConsumption());
+        device.setUserId(dto.getUserId());
         return DeviceBuilder.toDeviceDTO(deviceRepository.save(device));
     }
 
     public void delete(UUID id) {
         deviceRepository.delete(getOrThrow(id));
+    }
+
+    public List<DeviceDTO> findDevicesByUser(UUID userId) {
+        return deviceRepository.findByUserId(userId).stream()
+                .map(DeviceBuilder::toDeviceDTO)
+                .collect(Collectors.toList());
+    }
+
+    /** Called by user-service when a person is deleted; devices stay, just without an owner. */
+    @Transactional
+    public void unassignUser(UUID userId) {
+        int count = deviceRepository.unassignAll(userId);
+        LOGGER.debug("Unassigned {} devices from user {}", count, userId);
     }
 
     private Device getOrThrow(UUID id) {

@@ -54,6 +54,16 @@ public class PersonController {
         return new ResponseEntity<>(dto, HttpStatus.OK);
     }
 
-    //TODO: UPDATE, DELETE per resource
+    @PutMapping(value = EndpointPaths.ID)
+    public ResponseEntity<PersonDetailsDTO> updatePerson(@PathVariable("id") UUID personId,
+                                                         @Valid @RequestBody PersonDetailsDTO personDTO) {
+        return new ResponseEntity<>(personService.update(personId, personDTO), HttpStatus.OK);
+    }
+
+    @DeleteMapping(value = EndpointPaths.ID)
+    public ResponseEntity<Void> deletePerson(@PathVariable("id") UUID personId) {
+        personService.delete(personId);
+        return new ResponseEntity<>(HttpStatus.NO_CONTENT);
+    }
 
 }
