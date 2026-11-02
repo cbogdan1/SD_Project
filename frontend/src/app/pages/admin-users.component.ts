@@ -13,17 +13,17 @@ const EMPTY: RegisterRequest = { username: '', password: '', role: 'CLIENT', nam
   template: `
     <h2>Users</h2>
     <table>
-      <thead><tr><th>Name</th><th>Age</th><th></th></tr></thead>
+      <thead><tr><th>Username</th><th>Name</th><th>Age</th><th></th></tr></thead>
       <tbody>
         @for (u of users(); track u.id) {
           <tr>
-            <td>{{ u.name }}</td><td>{{ u.age }}</td>
+            <td>{{ u.username }}</td><td>{{ u.name }}</td><td>{{ u.age }}</td>
             <td>
               <button type="button" (click)="edit(u)">Edit</button>
               <button type="button" (click)="remove(u)">Delete</button>
             </td>
           </tr>
-        } @empty { <tr><td colspan="3">No users</td></tr> }
+        } @empty { <tr><td colspan="4">No users</td></tr> }
       </tbody>
     </table>
 

@@ -5,7 +5,7 @@ import { Device, DeviceService } from '../device.service';
 import { Person, UserService } from '../user.service';
 import { errorText } from '../http-error';
 
-const EMPTY: Device = { description: '', address: '', maxEnergyConsumption: 0, userId: null };
+const EMPTY: Device = { name: '', description: '', address: '', maxEnergyConsumption: 0, userId: null };
 
 @Component({
   selector: 'app-admin-devices',
@@ -13,13 +13,13 @@ const EMPTY: Device = { description: '', address: '', maxEnergyConsumption: 0, u
   template: `
     <h2>Devices</h2>
     <table>
-      <thead><tr><th>Description</th><th>Address</th><th>Max consumption</th><th>Owner</th><th></th></tr></thead>
+      <thead><tr><th>Name</th><th>Description</th><th>Address</th><th>Max consumption</th><th>Owner</th><th></th></tr></thead>
       <tbody>
         @for (d of devices(); track d.id) {
           <tr>
-            <td>{{ d.description }}</td><td>{{ d.address }}</td><td>{{ d.maxEnergyConsumption }}</td>
+            <td>{{ d.name }}</td><td>{{ d.description }}</td><td>{{ d.address }}</td><td>{{ d.maxEnergyConsumption }}</td>
             <td>
-              <select [attr.aria-label]="'Owner of ' + d.description" [ngModel]="d.userId" (ngModelChange)="assign(d, $event)">
+              <select [attr.aria-label]="'Owner of ' + d.name" [ngModel]="d.userId" (ngModelChange)="assign(d, $event)">
                 <option [ngValue]="null">— unassigned —</option>
                 @for (u of users(); track u.id) { <option [ngValue]="u.id">{{ u.name }}</option> }
               </select>
@@ -29,12 +29,13 @@ const EMPTY: Device = { description: '', address: '', maxEnergyConsumption: 0, u
               <button type="button" (click)="remove(d)">Delete</button>
             </td>
           </tr>
-        } @empty { <tr><td colspan="5">No devices</td></tr> }
+        } @empty { <tr><td colspan="6">No devices</td></tr> }
       </tbody>
     </table>
 
     <h3>{{ editingId() ? 'Edit device' : 'New device' }}</h3>
     <form (ngSubmit)="save()" class="stack">
+      <label>Name <input name="name" [(ngModel)]="form.name" required></label>
       <label>Description <input name="description" [(ngModel)]="form.description" required></label>
       <label>Address <input name="address" [(ngModel)]="form.address" required></label>
       <label>Max energy consumption <input name="max" type="number" min="0" [(ngModel)]="form.maxEnergyConsumption" required></label>
@@ -86,7 +87,7 @@ export class AdminDevicesComponent {
   }
 
   remove(device: Device) {
-    if (confirm(`Delete ${device.description}?`)) {
+    if (confirm(`Delete ${device.name}?`)) {
       this.run(this.deviceService.delete(device.id!));
     }
   }

@@ -1,0 +1,5 @@
+# Files the Java image builds do not need (the build context is the project root).
+# The frontend has its own build context (./frontend) and its own .dockerignore.
+.git
+**/target
+frontend

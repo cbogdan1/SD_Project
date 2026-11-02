@@ -9,6 +9,8 @@ import java.util.UUID;
 public class PersonDetailsDTO {
 
     private UUID id;
+    // set once, when the user registers (auth-service sends it); an update does not change it
+    private String username;
     @NotNull
     private String name;
     @NotNull
@@ -38,6 +40,14 @@ public class PersonDetailsDTO {
 
     public void setId(UUID id) {
         this.id = id;
+    }
+
+    public String getUsername() {
+        return username;
+    }
+
+    public void setUsername(String username) {
+        this.username = username;
     }
 
     public String getName() {

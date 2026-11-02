@@ -1,5 +1,8 @@
 package ro.tuc.auth.controllers;
 
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -28,11 +31,20 @@ public class AuthController {
         this.jwtService = jwtService;
     }
 
+    @Operation(summary = "Log in with username and password, returns a JWT")
+    @ApiResponse(responseCode = "200", description = "Token, role and user id")
+    @ApiResponse(responseCode = "401", description = "Wrong username or password")
     @PostMapping(value = EndpointPaths.LOGIN)
     public ResponseEntity<TokenResponse> login(@Valid @RequestBody LoginRequest request) {
         return new ResponseEntity<>(authService.login(request), HttpStatus.OK);
     }
 
+    @Operation(summary = "Register a user: creates the profile in user-service and the login here")
+    @ApiResponse(responseCode = "201", description = "User registered, returns the new user id")
+    @ApiResponse(responseCode = "400", description = "Invalid data (e.g. short password, age under 18)")
+    @ApiResponse(responseCode = "403", description = "Role ADMIN requested without an admin token")
+    @ApiResponse(responseCode = "409", description = "Username already exists")
+    @ApiResponse(responseCode = "503", description = "user-service or device-service not reachable")
     @PostMapping(value = EndpointPaths.REGISTER)
     public ResponseEntity<UUID> register(@Valid @RequestBody RegisterRequest request,
                                          @RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String authorization) {
@@ -43,6 +55,12 @@ public class AuthController {
      * Traefik ForwardAuth target: 200 lets the request through (with identity headers),
      * 401/403 is returned to the client and the backend is never called.
      */
+    // only /validate reads the token; login and register stay public (no lock in Swagger)
+    @SecurityRequirement(name = "bearerAuth")
+    @Operation(summary = "Check the token and the role before Traefik forwards a request (internal)")
+    @ApiResponse(responseCode = "200", description = "Allowed; X-User-Id and X-User-Role headers are set")
+    @ApiResponse(responseCode = "401", description = "Missing, invalid or expired token")
+    @ApiResponse(responseCode = "403", description = "Valid token, but the role may not call this path")
     @RequestMapping(value = EndpointPaths.VALIDATE)
     public ResponseEntity<Void> validate(@RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String authorization,
                                          @RequestHeader(value = "X-Forwarded-Method", required = false) String method,
@@ -58,6 +76,8 @@ public class AuthController {
     }
 
     // Internal only: Traefik does not route /credentials, user-service calls it directly on the Docker network
+    @Operation(summary = "Delete the login of a user (internal, called by user-service)")
+    @ApiResponse(responseCode = "204", description = "Login deleted")
     @DeleteMapping(value = EndpointPaths.CREDENTIALS + EndpointPaths.USER_ID)
     public ResponseEntity<Void> deleteCredentials(@PathVariable("userId") UUID userId) {
         authService.deleteByUserId(userId);

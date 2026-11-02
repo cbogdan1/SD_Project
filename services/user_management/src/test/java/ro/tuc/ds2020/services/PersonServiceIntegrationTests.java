@@ -2,7 +2,9 @@ package ro.tuc.ds2020.services;
 
 import org.junit.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.test.context.jdbc.Sql;
+import org.springframework.web.client.RestTemplate;
 import ro.tuc.ds2020.Ds2020TestConfig;
 import ro.tuc.ds2020.dtos.PersonDTO;
 import ro.tuc.ds2020.dtos.PersonDetailsDTO;
@@ -19,6 +21,10 @@ public class PersonServiceIntegrationTests extends Ds2020TestConfig {
     @Autowired
     PersonService personService;
 
+    // device-service does not run in tests: the mock makes the call to it do nothing
+    @MockBean
+    RestTemplate restTemplate;
+
     @Test
     public void testGetCorrect() {
         List<PersonDTO> personDTOList = personService.findPersons();
@@ -28,6 +34,7 @@ public class PersonServiceIntegrationTests extends Ds2020TestConfig {
     @Test
     public void testInsertCorrectWithGetById() {
         PersonDetailsDTO p = new PersonDetailsDTO("John", "Somewhere Else street", 22);
+        p.setUsername("john");
         UUID insertedID = personService.insert(p);
 
         PersonDetailsDTO insertedPerson = new PersonDetailsDTO(insertedID, p.getName(),p.getAddress(), p.getAge());
@@ -39,6 +46,7 @@ public class PersonServiceIntegrationTests extends Ds2020TestConfig {
     @Test
     public void testInsertCorrectWithGetAll() {
         PersonDetailsDTO p = new PersonDetailsDTO("John", "Somewhere Else street", 22);
+        p.setUsername("john");
         personService.insert(p);
 
         List<PersonDTO> personDTOList = personService.findPersons();

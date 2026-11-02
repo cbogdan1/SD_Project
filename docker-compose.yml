@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   reverse-proxy:
     image: traefik:v3.6
@@ -67,7 +65,10 @@ services:
       - app-network
 
   auth-service:
-    build: ./services/auth_management
+    # context = project root: the Maven build needs the parent pom.xml and the common module
+    build:
+      context: .
+      dockerfile: services/auth_management/Dockerfile
     environment:
       - DB_IP=auth-db
       - DB_PORT=5432
@@ -92,13 +93,19 @@ services:
       - traefik.http.routers.auth.middlewares=auth-strip
       - traefik.http.middlewares.auth-strip.stripprefix.prefixes=/auth
       - traefik.http.services.auth.loadbalancer.server.port=8083
+      # Swagger UI and the OpenAPI JSON are public (no token needed)
+      - traefik.http.routers.auth-docs.rule=PathPrefix(`/auth/swagger-ui`) || PathPrefix(`/auth/v3/api-docs`)
+      - traefik.http.routers.auth-docs.entrypoints=web
+      - traefik.http.routers.auth-docs.middlewares=auth-strip
       # ForwardAuth: Traefik asks auth-service /validate before every /users and /devices request
       - traefik.http.middlewares.jwt-auth.forwardauth.address=http://auth-service:8083/validate
       - traefik.http.middlewares.jwt-auth.forwardauth.authResponseHeaders=X-User-Id,X-User-Role
 
   # no container_name / ports: required so `--scale user-service=N` works; Traefik balances the replicas
   user-service:
-    build: ./services/user_management
+    build:
+      context: .
+      dockerfile: services/user_management/Dockerfile
     environment:
       - DB_IP=user-db
       - DB_PORT=5432
@@ -121,9 +128,15 @@ services:
       # controllers are mapped at /person, so /users/person -> /person
       - traefik.http.middlewares.users-strip.stripprefix.prefixes=/users
       - traefik.http.services.users.loadbalancer.server.port=8080
+      # Swagger UI and the OpenAPI JSON are public: no jwt-auth here, only the /users prefix is stripped
+      - traefik.http.routers.users-docs.rule=PathPrefix(`/users/swagger-ui`) || PathPrefix(`/users/v3/api-docs`)
+      - traefik.http.routers.users-docs.entrypoints=web
+      - traefik.http.routers.users-docs.middlewares=users-strip
 
   device-service:
-    build: ./services/device_management
+    build:
+      context: .
+      dockerfile: services/device_management/Dockerfile
     environment:
       - DB_IP=device-db
       - DB_PORT=5432
@@ -143,6 +156,10 @@ services:
       # controllers are mapped at /device, so /devices/device -> /device
       - traefik.http.middlewares.devices-strip.stripprefix.prefixes=/devices
       - traefik.http.services.devices.loadbalancer.server.port=8081
+      # Swagger UI and the OpenAPI JSON are public: no jwt-auth here, only the /devices prefix is stripped
+      - traefik.http.routers.devices-docs.rule=PathPrefix(`/devices/swagger-ui`) || PathPrefix(`/devices/v3/api-docs`)
+      - traefik.http.routers.devices-docs.entrypoints=web
+      - traefik.http.routers.devices-docs.middlewares=devices-strip
 
   frontend:
     build: ./frontend

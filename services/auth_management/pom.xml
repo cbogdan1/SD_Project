@@ -65,6 +65,12 @@
             <version>${jjwt.version}</version>
             <scope>runtime</scope>
         </dependency>
+        <!-- Swagger UI + OpenAPI docs (1.x is the line for Spring Boot 2) -->
+        <dependency>
+            <groupId>org.springdoc</groupId>
+            <artifactId>springdoc-openapi-ui</artifactId>
+            <version>1.7.0</version>
+        </dependency>
 
         <!-- TESTING -->
         <dependency>

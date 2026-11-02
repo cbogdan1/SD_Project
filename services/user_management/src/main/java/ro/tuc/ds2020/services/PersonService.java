@@ -51,22 +51,37 @@ public class PersonService {
         return PersonBuilder.toPersonDetailsDTO(getOrThrow(id));
     }
 
+    /** Saves the person in the User DB first, then tells device-service to add the id to its app_user table. */
     public UUID insert(PersonDetailsDTO personDTO) {
         Person person = PersonBuilder.toEntity(personDTO);
         person = personRepository.save(person);
         LOGGER.debug("Person with id {} was inserted in db", person.getId());
+        String userPath = EndpointPaths.USER_ID.replace("{userId}", person.getId().toString());
+        try {
+            restTemplate.postForEntity(deviceServiceUrl + EndpointPaths.DEVICE + userPath, null, Void.class);
+        } catch (RestClientException e) {
+            // device-service did not get the id: delete the person again, so both databases stay the same
+            LOGGER.error("Could not add person {} to device-service, person not saved", person.getId(), e);
+            personRepository.delete(person);
+            throw new CustomException("Could not add the user to device-service",
+                    HttpStatus.SERVICE_UNAVAILABLE, Person.class.getSimpleName(), List.of(e.getMessage()));
+        }
         return person.getId();
     }
 
     public PersonDetailsDTO update(UUID id, PersonDetailsDTO personDTO) {
         Person person = getOrThrow(id);
+        // the username is not changed here: it must stay the same as the login in auth-service
         person.setName(personDTO.getName());
         person.setAddress(personDTO.getAddress());
         person.setAge(personDTO.getAge());
         return PersonBuilder.toPersonDetailsDTO(personRepository.save(person));
     }
 
-    /** Removes the login and unassigns the devices first, so a failure there leaves the person intact. */
+    /**
+     * Removes the login (auth-service) and the user id from app_user (device-service, its devices become unassigned)
+     * first, so a failure there leaves the person intact.
+     */
     public void delete(UUID id) {
         Person person = getOrThrow(id);
         String userPath = EndpointPaths.USER_ID.replace("{userId}", id.toString());

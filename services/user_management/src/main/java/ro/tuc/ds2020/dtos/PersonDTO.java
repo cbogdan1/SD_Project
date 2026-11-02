@@ -7,14 +7,16 @@ import java.util.UUID;
 
 public class PersonDTO extends RepresentationModel<PersonDTO> {
     private UUID id;
+    private String username;
     private String name;
     private int age;
 
     public PersonDTO() {
     }
 
-    public PersonDTO(UUID id, String name, int age) {
+    public PersonDTO(UUID id, String username, String name, int age) {
         this.id = id;
+        this.username = username;
         this.name = name;
         this.age = age;
     }
@@ -25,6 +27,14 @@ public class PersonDTO extends RepresentationModel<PersonDTO> {
 
     public void setId(UUID id) {
         this.id = id;
+    }
+
+    public String getUsername() {
+        return username;
+    }
+
+    public void setUsername(String username) {
+        this.username = username;
     }
 
     public String getName() {

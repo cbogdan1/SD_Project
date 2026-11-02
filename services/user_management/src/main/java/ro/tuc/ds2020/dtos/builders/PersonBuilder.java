@@ -10,15 +10,18 @@ public class PersonBuilder {
     }
 
     public static PersonDTO toPersonDTO(Person person) {
-        return new PersonDTO(person.getId(), person.getName(), person.getAge());
+        return new PersonDTO(person.getId(), person.getUsername(), person.getName(), person.getAge());
     }
 
     public static PersonDetailsDTO toPersonDetailsDTO(Person person) {
-        return new PersonDetailsDTO(person.getId(), person.getName(), person.getAddress(), person.getAge());
+        PersonDetailsDTO dto = new PersonDetailsDTO(person.getId(), person.getName(), person.getAddress(), person.getAge());
+        dto.setUsername(person.getUsername());
+        return dto;
     }
 
     public static Person toEntity(PersonDetailsDTO personDetailsDTO) {
-        return new Person(personDetailsDTO.getName(),
+        return new Person(personDetailsDTO.getUsername(),
+                personDetailsDTO.getName(),
                 personDetailsDTO.getAddress(),
                 personDetailsDTO.getAge());
     }

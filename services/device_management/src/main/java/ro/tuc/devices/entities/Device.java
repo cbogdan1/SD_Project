@@ -18,6 +18,9 @@ public class Device implements Serializable {
     @Type(type = "uuid-binary")
     private UUID id;
 
+    @Column(name = "name", nullable = false)
+    private String name;
+
     @Column(name = "description", nullable = false)
     private String description;
 
@@ -27,7 +30,7 @@ public class Device implements Serializable {
     @Column(name = "max_energy_consumption", nullable = false)
     private double maxEnergyConsumption;
 
-    // owner's Person id from user-service; null = unassigned (no FK, it lives in another database)
+    // owner's id; null = unassigned. FK to the local app_user table (copy of the user ids from user-service)
     @Type(type = "uuid-binary")
     @Column(name = "user_id")
     private UUID userId;
@@ -35,7 +38,8 @@ public class Device implements Serializable {
     public Device() {
     }
 
-    public Device(String description, String address, double maxEnergyConsumption, UUID userId) {
+    public Device(String name, String description, String address, double maxEnergyConsumption, UUID userId) {
+        this.name = name;
         this.description = description;
         this.address = address;
         this.maxEnergyConsumption = maxEnergyConsumption;
@@ -48,6 +52,14 @@ public class Device implements Serializable {
 
     public void setId(UUID id) {
         this.id = id;
+    }
+
+    public String getName() {
+        return name;
+    }
+
+    public void setName(String name) {
+        this.name = name;
     }
 
     public String getDescription() {

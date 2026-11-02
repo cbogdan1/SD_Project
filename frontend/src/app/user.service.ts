@@ -1,7 +1,7 @@
 import { Injectable, inject } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 
-export interface Person { id: string; name: string; age: number; }
+export interface Person { id: string; username: string; name: string; age: number; }
 export interface PersonDetails { id?: string; name: string; address: string; age: number; }
 
 // Relative URL: same origin as the page, Traefik routes /users to user-service and strips the prefix.

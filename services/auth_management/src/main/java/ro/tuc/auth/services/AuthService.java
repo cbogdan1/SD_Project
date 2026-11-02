@@ -97,6 +97,7 @@ public class AuthService implements ApplicationRunner {
 
     private UUID createPerson(RegisterRequest request) {
         Map<String, Object> person = Map.of(
+                "username", request.getUsername(),
                 "name", request.getName(),
                 "address", request.getAddress(),
                 "age", request.getAge());

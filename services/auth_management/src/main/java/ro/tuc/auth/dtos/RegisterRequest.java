@@ -13,7 +13,6 @@ public class RegisterRequest {
     @NotBlank
     @Size(min = 4)
     private String password;
-    // null = CLIENT; ADMIN only when the caller is already an admin
     private Role role;
 
     @NotBlank

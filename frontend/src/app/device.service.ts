@@ -3,6 +3,7 @@ import { HttpClient } from '@angular/common/http';
 
 export interface Device {
   id?: string;
+  name: string;
   description: string;
   address: string;
   maxEnergyConsumption: number;

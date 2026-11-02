@@ -19,6 +19,10 @@ public class Person  implements Serializable{
     @Type(type = "uuid-binary")
     private UUID id;
 
+    // same username as the login in auth-service
+    @Column(name = "username", nullable = false)
+    private String username;
+
     @Column(name = "name", nullable = false)
     private String name;
 
@@ -32,7 +36,8 @@ public class Person  implements Serializable{
     public Person() {
     }
 
-    public Person(String name, String address, int age) {
+    public Person(String username, String name, String address, int age) {
+        this.username = username;
         this.name = name;
         this.address = address;
         this.age = age;
@@ -44,6 +49,14 @@ public class Person  implements Serializable{
 
     public void setId(UUID id) {
         this.id = id;
+    }
+
+    public String getUsername() {
+        return username;
+    }
+
+    public void setUsername(String username) {
+        this.username = username;
     }
 
     public String getName() {

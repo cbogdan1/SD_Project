@@ -7,6 +7,8 @@ import java.util.UUID;
 public class DeviceDTO {
     private UUID id;
     @NotBlank
+    private String name;
+    @NotBlank
     private String description;
     @NotBlank
     private String address;
@@ -18,8 +20,9 @@ public class DeviceDTO {
     public DeviceDTO() {
     }
 
-    public DeviceDTO(UUID id, String description, String address, double maxEnergyConsumption, UUID userId) {
+    public DeviceDTO(UUID id, String name, String description, String address, double maxEnergyConsumption, UUID userId) {
         this.id = id;
+        this.name = name;
         this.description = description;
         this.address = address;
         this.maxEnergyConsumption = maxEnergyConsumption;
@@ -32,6 +35,14 @@ public class DeviceDTO {
 
     public void setId(UUID id) {
         this.id = id;
+    }
+
+    public String getName() {
+        return name;
+    }
+
+    public void setName(String name) {
+        this.name = name;
     }
 
     public String getDescription() {

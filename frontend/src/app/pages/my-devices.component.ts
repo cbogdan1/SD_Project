@@ -9,11 +9,11 @@ import { errorText } from '../http-error';
     <h2>My devices</h2>
     @if (error()) { <p class="error" role="alert">{{ error() }}</p> }
     <table>
-      <thead><tr><th>Description</th><th>Address</th><th>Max consumption</th></tr></thead>
+      <thead><tr><th>Name</th><th>Description</th><th>Address</th><th>Max consumption</th></tr></thead>
       <tbody>
         @for (d of devices(); track d.id) {
-          <tr><td>{{ d.description }}</td><td>{{ d.address }}</td><td>{{ d.maxEnergyConsumption }}</td></tr>
-        } @empty { <tr><td colspan="3">No devices assigned to you yet</td></tr> }
+          <tr><td>{{ d.name }}</td><td>{{ d.description }}</td><td>{{ d.address }}</td><td>{{ d.maxEnergyConsumption }}</td></tr>
+        } @empty { <tr><td colspan="4">No devices assigned to you yet</td></tr> }
       </tbody>
     </table>
   `,
