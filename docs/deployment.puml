@@ -1,12 +1,18 @@
 @startuml deployment
-' UML deployment diagram of the Energy Management System.
+' UML deployment diagram of the Energy Management System (Assignment 1 + Assignment 2).
 ' Render to PNG: docker run --rm -v "$PWD/docs":/data plantuml/plantuml:1.2024.7 -tpng /data/deployment.puml
 title Energy Management System - UML Deployment Diagram
 left to right direction
 
 node "Client PC" <<device>> {
   node "Web Browser" <<executionEnvironment>> as browser {
-    artifact "Angular SPA" as spa
+    artifact "Angular SPA\n(Chart.js)" as spa
+  }
+}
+
+node "Simulator PC (the host, outside Docker)" <<device>> {
+  node "JVM (Java 17+)" <<executionEnvironment>> as simJvm {
+    artifact "simulator.jar\n+ config.properties\n(device.id)" as simJar
   }
 }
 
@@ -31,6 +37,15 @@ node "Docker Host" <<device>> {
       artifact "app.jar\n(device_management)" as deviceJar
     }
 
+    node "monitoring-service\n(eclipse-temurin:17-jre)" <<executionEnvironment>> as monitoring {
+      artifact "app.jar\n(monitoring_management)" as monitoringJar
+    }
+
+    node "kafka\n(apache/kafka:3.9.1, KRaft)\ncontainers :29092, host :9092" <<executionEnvironment>> as kafka {
+      queue "device-measurements\n(data collection)" as topicData
+      queue "sync-events\n(synchronization)" as topicSync
+    }
+
     node "auth-db / auth-postgres\n(postgres:15-alpine)" <<executionEnvironment>> as authDbNode {
       artifact "auth_sd schema\n(credential)" <<schema>> as authDb
     }
@@ -42,6 +57,10 @@ node "Docker Host" <<device>> {
     node "device-db / device-postgres\n(postgres:15-alpine)" <<executionEnvironment>> as deviceDbNode {
       artifact "device_sd schema\n(device, app_user)" <<schema>> as deviceDb
     }
+
+    node "monitoring-db / monitoring-postgres\n(postgres:15-alpine)" <<executionEnvironment>> as monitoringDbNode {
+      artifact "monitoring_sd schema\n(device, hourly_consumption)" <<schema>> as monitoringDb
+    }
   }
 }
 
@@ -51,14 +70,22 @@ traefik --> frontend : HTTP :80\n/ (everything else)
 traefik --> auth : HTTP :8083\n/auth/login, /auth/register\n+ ForwardAuth /validate
 traefik --> users : HTTP :8080\n/users/**
 traefik --> devices : HTTP :8081\n/devices/**
+traefik --> monitoring : HTTP :8084\n/monitoring/**
 
 auth --> users : HTTP :8080\nPOST /person (register)
 users --> auth : HTTP :8083\nDELETE /credentials/user/{id}
-users --> devices : HTTP :8081\nPOST, DELETE /device/user/{id}
+
+simJar --> topicData : Kafka TCP :9092\npublish measurements (JSON)
+users --> topicSync : Kafka TCP :29092\npublish USER_CREATED / USER_DELETED
+devices --> topicSync : Kafka TCP :29092\npublish DEVICE_CREATED / UPDATED / DELETED
+topicSync --> devices : consume USER_*\n(group device-service)
+topicSync --> monitoring : consume DEVICE_*, USER_DELETED\n(group monitoring-service)
+topicData --> monitoring : consume measurements\n(group monitoring-service)
 
 auth --> authDbNode : JDBC :5432
 users --> userDbNode : JDBC :5432
 devices --> deviceDbNode : JDBC :5432
+monitoring --> monitoringDbNode : JDBC :5432
 
 note bottom of users
   user-service and device-service have no
