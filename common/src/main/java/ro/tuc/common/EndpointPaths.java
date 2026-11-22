@@ -8,6 +8,7 @@ public final class EndpointPaths {
 
     public static final String PERSON = "/person";
     public static final String DEVICE = "/device";
+    public static final String CONSUMPTION = "/consumption";
 
     public static final String LOGIN = "/login";
     public static final String REGISTER = "/register";
@@ -17,6 +18,7 @@ public final class EndpointPaths {
     // Prefixes added by Traefik in front of each service (stripped before the request reaches it)
     public static final String GATEWAY_USERS = "/users";
     public static final String GATEWAY_DEVICES = "/devices";
+    public static final String GATEWAY_MONITORING = "/monitoring";
 
     private EndpointPaths() {
     }

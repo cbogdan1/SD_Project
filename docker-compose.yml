@@ -64,6 +64,21 @@ services:
     networks:
       - app-network
 
+  monitoring-db:
+    image: postgres:15-alpine
+    container_name: monitoring-postgres
+    environment:
+      POSTGRES_DB: monitoring_sd
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: root
+    ports:
+      - "5435:5432"
+    volumes:
+      - monitoring-pgdata:/var/lib/postgresql/data
+    healthcheck: *pg-healthcheck
+    networks:
+      - app-network
+
   # Message broker (A2). KRaft mode = no ZooKeeper: this one node is both the broker and the controller.
   kafka:
     image: apache/kafka:3.9.1
@@ -126,7 +141,7 @@ services:
       - traefik.http.routers.auth-docs.rule=PathPrefix(`/auth/swagger-ui`) || PathPrefix(`/auth/v3/api-docs`)
       - traefik.http.routers.auth-docs.entrypoints=web
       - traefik.http.routers.auth-docs.middlewares=auth-strip
-      # ForwardAuth: Traefik asks auth-service /validate before every /users and /devices request
+      # ForwardAuth: Traefik asks auth-service /validate before every /users, /devices and /monitoring request
       - traefik.http.middlewares.jwt-auth.forwardauth.address=http://auth-service:8083/validate
       - traefik.http.middlewares.jwt-auth.forwardauth.authResponseHeaders=X-User-Id,X-User-Role
 
@@ -195,6 +210,38 @@ services:
       - traefik.http.routers.devices-docs.entrypoints=web
       - traefik.http.routers.devices-docs.middlewares=devices-strip
 
+  # A2: reads measurements and sync events from Kafka, stores hourly totals, serves them over REST
+  monitoring-service:
+    build:
+      context: .
+      dockerfile: services/monitoring_management/Dockerfile
+    environment:
+      - DB_IP=monitoring-db
+      - DB_PORT=5432
+      - DB_USER=postgres
+      - DB_PASSWORD=root
+      - DB_DBNAME=monitoring_sd
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
+    depends_on:
+      monitoring-db:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    networks:
+      - app-network
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.monitoring.rule=PathPrefix(`/monitoring`)
+      - traefik.http.routers.monitoring.entrypoints=web
+      - traefik.http.routers.monitoring.middlewares=jwt-auth,monitoring-strip
+      # controllers are mapped at /consumption, so /monitoring/consumption -> /consumption
+      - traefik.http.middlewares.monitoring-strip.stripprefix.prefixes=/monitoring
+      - traefik.http.services.monitoring.loadbalancer.server.port=8084
+      # Swagger UI and the OpenAPI JSON are public: no jwt-auth here, only the /monitoring prefix is stripped
+      - traefik.http.routers.monitoring-docs.rule=PathPrefix(`/monitoring/swagger-ui`) || PathPrefix(`/monitoring/v3/api-docs`)
+      - traefik.http.routers.monitoring-docs.entrypoints=web
+      - traefik.http.routers.monitoring-docs.middlewares=monitoring-strip
+
   frontend:
     build: ./frontend
     networks:
@@ -203,7 +250,7 @@ services:
       - traefik.enable=true
       - traefik.http.routers.frontend.rule=PathPrefix(`/`)
       - traefik.http.routers.frontend.entrypoints=web
-      # lowest priority: /users, /devices and /auth win, everything else goes to the SPA
+      # lowest priority: /users, /devices, /monitoring and /auth win, everything else goes to the SPA
       - traefik.http.routers.frontend.priority=1
       - traefik.http.services.frontend.loadbalancer.server.port=80
 
@@ -211,6 +258,7 @@ volumes:
   user-pgdata:
   device-pgdata:
   auth-pgdata:
+  monitoring-pgdata:
 
 networks:
   app-network:
