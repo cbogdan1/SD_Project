@@ -13,11 +13,11 @@ const EMPTY: Device = { name: '', description: '', address: '', maxEnergyConsump
   template: `
     <h2>Devices</h2>
     <table>
-      <thead><tr><th>Name</th><th>Description</th><th>Address</th><th>Max consumption</th><th>Owner</th><th></th></tr></thead>
+      <thead><tr><th>Id (for the simulator)</th><th>Name</th><th>Description</th><th>Address</th><th>Max consumption</th><th>Owner</th><th></th></tr></thead>
       <tbody>
         @for (d of devices(); track d.id) {
           <tr>
-            <td>{{ d.name }}</td><td>{{ d.description }}</td><td>{{ d.address }}</td><td>{{ d.maxEnergyConsumption }}</td>
+            <td>{{ d.id }}</td><td>{{ d.name }}</td><td>{{ d.description }}</td><td>{{ d.address }}</td><td>{{ d.maxEnergyConsumption }}</td>
             <td>
               <select [attr.aria-label]="'Owner of ' + d.name" [ngModel]="d.userId" (ngModelChange)="assign(d, $event)">
                 <option [ngValue]="null">— unassigned —</option>
@@ -29,7 +29,7 @@ const EMPTY: Device = { name: '', description: '', address: '', maxEnergyConsump
               <button type="button" (click)="remove(d)">Delete</button>
             </td>
           </tr>
-        } @empty { <tr><td colspan="6">No devices</td></tr> }
+        } @empty { <tr><td colspan="7">No devices</td></tr> }
       </tbody>
     </table>
 
