@@ -49,15 +49,7 @@ public class PersonController {
         return new ResponseEntity<>(dtos, HttpStatus.OK);
     }
 
-    @Operation(summary = "Create a user (called by auth-service on register); publishes USER_CREATED on Kafka")
-    @ApiResponse(responseCode = "201", description = "User created, returns its id")
-    @ApiResponse(responseCode = "400", description = "Invalid user data (e.g. age under 18)")
-    @ApiResponse(responseCode = "503", description = "Kafka is not reachable, user not saved")
-    @PostMapping()
-    public ResponseEntity<UUID> insertProsumer(@Valid @RequestBody PersonDetailsDTO personDTO) {
-        UUID personID = personService.insert(personDTO);
-        return new ResponseEntity<>(personID, HttpStatus.CREATED);
-    }
+    // no POST here: users are created through /auth/register, which publishes USER_CREATED (see SyncEventListener)
 
     @Operation(summary = "Get one user by id")
     @ApiResponse(responseCode = "200", description = "The user")
@@ -78,10 +70,10 @@ public class PersonController {
         return new ResponseEntity<>(personService.update(personId, personDTO), HttpStatus.OK);
     }
 
-    @Operation(summary = "Delete a user and its login (auth-service); publishes USER_DELETED on Kafka")
+    @Operation(summary = "Delete a user; publishes USER_DELETED on Kafka (auth-service then deletes the login)")
     @ApiResponse(responseCode = "204", description = "User deleted")
     @ApiResponse(responseCode = "404", description = "User not found")
-    @ApiResponse(responseCode = "503", description = "auth-service or Kafka not reachable, user kept")
+    @ApiResponse(responseCode = "503", description = "Kafka not reachable, user kept")
     @DeleteMapping(value = EndpointPaths.ID)
     public ResponseEntity<Void> deletePerson(@PathVariable("id") UUID personId) {
         personService.delete(personId);

@@ -13,7 +13,6 @@ public final class EndpointPaths {
     public static final String LOGIN = "/login";
     public static final String REGISTER = "/register";
     public static final String VALIDATE = "/validate";
-    public static final String CREDENTIALS = "/credentials";
 
     // Prefixes added by Traefik in front of each service (stripped before the request reaches it)
     public static final String GATEWAY_USERS = "/users";

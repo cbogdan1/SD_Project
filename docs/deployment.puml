@@ -76,12 +76,13 @@ traefik --> users : HTTP :8080\n/users/**
 traefik --> devices : HTTP :8081\n/devices/**
 traefik --> monitoring : HTTP :8084\n/monitoring/**
 
-auth --> users : HTTP :8080\nPOST /person (register)
-users --> auth : HTTP :8083\nDELETE /credentials/user/{id}
-
+' auth-service and user-service never call each other: they are connected only through sync-events
 simJar --> topicData : Kafka TCP :9092\npublish measurements (JSON)
-users --> topicSync : Kafka TCP :29092\npublish USER_CREATED / USER_DELETED
+auth --> topicSync : Kafka TCP :29092\npublish USER_CREATED (id + profile)
+users --> topicSync : Kafka TCP :29092\npublish USER_DELETED
 devices --> topicSync : Kafka TCP :29092\npublish DEVICE_CREATED / UPDATED / DELETED
+topicSync --> auth : consume USER_DELETED\n(group auth-service)
+topicSync --> users : consume USER_CREATED\n(group user-service)
 topicSync --> devices : consume USER_*\n(group device-service)
 topicSync --> monitoring : consume DEVICE_*, USER_DELETED\n(group monitoring-service)
 topicData --> monitoring : consume measurements\n(group monitoring-service)

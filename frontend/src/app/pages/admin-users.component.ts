@@ -1,6 +1,6 @@
 import { Component, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { Observable } from 'rxjs';
+import { Observable, delay } from 'rxjs';
 import { AuthService, RegisterRequest } from '../auth/auth.service';
 import { Person, UserService } from '../user.service';
 import { errorText } from '../http-error';
@@ -77,10 +77,11 @@ export class AdminUsersComponent {
   save() {
     const id = this.editingId();
     const { name, address, age } = this.form;
-    // new users go through auth-service so they also get a login; the admin token allows role ADMIN
+    // new users go through auth-service so they also get a login; the admin token allows role ADMIN.
+    // user-service creates the person a few ms later (USER_CREATED on Kafka), so wait a bit before reloading the list
     const request: Observable<unknown> = id
       ? this.userService.update(id, { name, address, age })
-      : this.auth.register(this.form);
+      : this.auth.register(this.form).pipe(delay(500));
     this.run(request);
   }
 

@@ -134,35 +134,61 @@ deci ora 18 din simulator este bara 18 din grafic. `timestamp` este **începutul
 ## 3. Fluxul de sincronizare
 
 Fiecare serviciu are baza lui de date. Datele de care au nevoie și alte servicii sunt copiate prin evenimente:
-device-service ține id-urile utilizatorilor (`app_user`), iar monitoring-service ține dispozitivele și proprietarii (`device`).
+user-service ține profilul (`person`), device-service ține id-urile utilizatorilor (`app_user`), iar monitoring-service
+ține dispozitivele și proprietarii (`device`). Ca în diagrama conceptuală din PDF, **auth-service și user-service sunt
+legate doar de broker**: nu se apelează niciodată direct prin HTTP.
 
 ```
- user-service ─── USER_CREATED / USER_DELETED ──────────────┐
+ auth-service ─── USER_CREATED ─────────────────────────────┐
+ user-service ─── USER_DELETED ─────────────────────────────┤
                                                             ▼
                                    ┌──────────────────────────────────────────┐
  device-service ─ DEVICE_CREATED / │ topic sync-events (o partiție)           │
                   DEVICE_UPDATED / │ offset: 0 USER_CREATED, 1 DEVICE_CREATED │
                   DEVICE_DELETED ─►│         2 USER_DELETED, …                │
-                                   └──────────┬──────────────────┬────────────┘
-                     group device-service     │                  │   group monitoring-service
-                     (fiecare grup primește   ▼                  ▼   (fiecare grup primește TOT)
-                      TOATE evenimentele)
-                   device-service                         monitoring-service
-                   USER_CREATED → INSERT app_user          DEVICE_CREATED/UPDATED → save(device, owner)
-                   USER_DELETED → DELETE app_user          DEVICE_DELETED → DELETE device (+ consumul, CASCADE)
-                   DEVICE_* → ignoră (sunt ale lui)        USER_DELETED → user_id = NULL la device-urile lui
-                                                           USER_CREATED → ignoră
+                                   └───┬──────────┬──────────┬──────────┬─────┘
+              (fiecare grup primește   │          │          │          │
+               TOATE evenimentele)     ▼          ▼          ▼          ▼
+   group auth-service    group user-service   group device-service     group monitoring-service
+   USER_DELETED →        USER_CREATED →       USER_CREATED → INSERT    DEVICE_CREATED/UPDATED → save(device, owner)
+     DELETE credential     INSERT person        app_user               DEVICE_DELETED → DELETE device (+ consum)
+   restul → ignoră       restul → ignoră      USER_DELETED → DELETE    USER_DELETED → user_id = NULL la device-uri
+                                                app_user               USER_CREATED → ignoră
+                                              DEVICE_* → ignoră
 ```
 
-Mesajul este un singur DTO, `SyncEvent`, în modulul `common`, deci același pentru toți: `type` + `id` + `userId` (opțional).
+Mesajul este un singur DTO, `SyncEvent`, în modulul `common`, deci același pentru toți: `type` + `id` + `userId`
+(proprietarul, doar la device-uri) + `username`, `name`, `address`, `age` (profilul, doar la `USER_CREATED`).
+Câmpurile `null` nu apar în JSON (`@JsonInclude(NON_NULL)`).
 
 ### Pe scenarii
 
-**Utilizator nou** (Register sau „New user” la admin):
-1. auth-service → `POST /person` la user-service (REST: auth are nevoie de id-ul nou ca să creeze login-ul).
-2. user-service salvează persoana și publică `USER_CREATED` (în `@Transactional`, așteptând confirmarea Kafka).
-3. device-service primește evenimentul și face `INSERT` în `app_user`.
-4. auth-service salvează credențialul (parola hash-uită) legat de acel `userId`.
+**Utilizator nou** (Register pe pagina publică sau „New user” la admin) — pornește din auth-service:
+
+```
+ Browser ── POST /auth/register ──► auth-service
+                                     1. validează: name, address obligatorii, age >= 18 (altfel 400)
+                                     2. username liber? (altfel 409)
+                                     3. userId = UUID.randomUUID()
+                                     4. INSERT credential (parola hash-uită)
+                                     5. publică USER_CREATED {id, username, name, address, age}
+ Browser ◄── 201 + userId ────────── (4 și 5 în aceeași @Transactional)
+                                                 │ sync-events
+                         ┌───────────────────────┼─────────────────────────┐
+                         ▼                       ▼                         ▼
+                   user-service            device-service           monitoring-service
+                   INSERT person           INSERT app_user          ignoră
+                   (cu ACELAȘI id)         (același id)
+```
+
+- user-service **nu** publică încă un `USER_CREATED`: evenimentul care a creat persoana e deja în topic.
+- Dacă Kafka e oprit, `publish()` aruncă eroare, `@Transactional` anulează login-ul și răspunsul e 503.
+- user-service nu poate „refuza” un eveniment, de aceea validarea profilului s-a mutat în `RegisterRequest` (auth-service).
+
+**Adminul inițial (seed):** la fiecare pornire, auth-service creează login-ul `admin` dacă lipsește și apoi publică
+`USER_CREATED` pentru el (nume `Administrator`). Consumatorii sar peste un utilizator pe care îl au deja
+(„already exists, skipped”), deci repetarea nu strică nimic. Așa adminul are persoană și rând în `app_user` ca oricine,
+chiar și pe un volum vechi, creat înainte de această schimbare. Dacă publicarea eșuează, se reîncearcă la pornirea următoare.
 
 **Dispozitiv nou / modificat / șters** (pagina Devices la admin):
 1. device-service verifică proprietarul în `app_user` (404 dacă nu există), salvează și publică `DEVICE_CREATED`
@@ -170,9 +196,24 @@ Mesajul este un singur DTO, `SyncEvent`, în modulul `common`, deci același pen
 2. monitoring-service: la CREATED/UPDATED face `save(new Device(id, userId))`, adică insert sau suprascrie proprietarul.
    La DELETED face `DELETE`, iar baza de date șterge singură și consumul (`ON DELETE CASCADE`).
 
-**Ștergere utilizator:**
-1. user-service → `DELETE /credentials/user/{id}` la auth-service (rămas REST, vezi capitolul 7).
-2. user-service șterge persoana și publică `USER_DELETED`.
+**Ștergere utilizator** (adminul apasă Delete) — pornește din user-service:
+
+```
+ Browser ── DELETE /users/person/{id} ──► user-service
+                                           1. DELETE person
+                                           2. publică USER_DELETED {id}   (1 și 2 în aceeași @Transactional)
+ Browser ◄── 204 ─────────────────────────
+                                                 │ sync-events
+             ┌───────────────────┬───────────────┴──────────┬──────────────────────────┐
+             ▼                   ▼                          ▼                          ▼
+       auth-service        device-service             monitoring-service         user-service
+       DELETE credential   DELETE app_user            user_id = NULL la          ignoră (e al lui)
+       (nu se mai poate    (FK: device-urile lui      device-urile lui
+        loga)               devin neasignate)
+```
+
+1. user-service șterge persoana și publică `USER_DELETED`.
+2. auth-service șterge login-ul. Un token JWT deja emis rămâne valid până expiră (maxim 60 de minute).
 3. device-service șterge id-ul din `app_user`. Cheia străină (`ON DELETE SET NULL`) face dispozitivele lui „neasignate”.
 4. monitoring-service pune `user_id = NULL` la dispozitivele acelui utilizator. Fără asta ar rămâne un proprietar
    vechi, pentru că FK-ul din device-service schimbă rândurile direct în DB, fără să trimită evenimente `DEVICE_UPDATED`.
@@ -278,7 +319,7 @@ Clasificări uzuale:
   O valoare trebuie adunată o singură dată la totalul orei.
 - **Publish-Subscribe:** publicatorul trimite un eveniment fără să știe cine îl ascultă. **Toți** abonații primesc o copie,
   iar abonații noi se adaugă fără să schimbi publicatorul.
-  *Exemplu în proiect:* user-service publică `USER_DELETED`. Îl primesc și device-service (șterge din `app_user`),
+  *Exemplu în proiect:* user-service publică `USER_DELETED`. Îl primesc auth-service (șterge login-ul), device-service (șterge din `app_user`)
   și monitoring-service (pune `user_id = NULL`). user-service nu știe de niciunul.
 - **Abonament durabil:** la Kafka abonatul care pornește mai târziu primește și mesajele vechi, pentru că ele rămân
   în topic. Așa a recuperat monitoring-service toate evenimentele trimise înainte să existe.
@@ -290,23 +331,42 @@ Clasificări uzuale:
 ### `common` (cod comun pentru toate serviciile)
 - `events/KafkaTopics.java` (**nou**): numele celor două topicuri ca constante, ca să nu fie scrise de mână în fiecare serviciu.
 - `events/SyncEventType.java` (**nou**): enum cu tipurile de evenimente (`USER_CREATED`, `USER_DELETED`, `DEVICE_CREATED`, `DEVICE_UPDATED`, `DEVICE_DELETED`).
-- `events/SyncEvent.java` (**nou**): DTO-ul unic al evenimentelor de sincronizare: `type`, `id`, `userId` (proprietarul, doar la device-uri). Are constructor gol pentru Jackson.
+- `events/SyncEvent.java` (**nou**): DTO-ul unic al evenimentelor de sincronizare: `type`, `id`, `userId` (proprietarul, doar la device-uri) și profilul `username`, `name`, `address`, `age` (doar la `USER_CREATED`). Are constructor gol pentru Jackson.
+- `EndpointPaths.java` (**modificat**): a dispărut `CREDENTIALS`.
 - `EndpointPaths.java` (**modificat**): `CONSUMPTION = "/consumption"` și `GATEWAY_MONITORING = "/monitoring"`, folosite de controller și de `AccessPolicy`.
 
 ### `auth_management`
+- `pom.xml` (**modificat**): `spring-kafka`.
+- `kafka/SyncEventPublisher.java` (**nou**): la fel ca cel din user-service (cheia = id-ul utilizatorului).
+- `kafka/SyncEventListener.java` (**nou**): `@KafkaListener` pe `sync-events` (grupul `auth-service`). La `USER_DELETED` apelează `deleteByUserId` (șterge login-ul). Restul evenimentelor le ignoră.
+- `services/AuthService.java` (**modificat**):
+  - `register` generează id-ul (UUID), salvează login-ul și publică `USER_CREATED` cu profilul, în `@Transactional`. Apelul REST la user-service și `RestTemplate` au dispărut;
+  - `run` (seed-ul adminului) publică `USER_CREATED` pentru admin la fiecare pornire.
+- `dtos/RegisterRequest.java` (**modificat**): validarea profilului e aici acum: `name`/`address` `@NotBlank`, `age` `@Min(18)`.
+- `controllers/AuthController.java` (**modificat**): a dispărut endpoint-ul intern `DELETE /credentials/user/{id}`.
+- `application.properties` (**modificat**): a dispărut `services.user.url`. Kafka: adresa, timeout-urile producătorului, `group-id = auth-service`, `earliest`.
 - `services/AccessPolicy.java` (**modificat**): o regulă nouă. CLIENT poate face `GET` pe exact `/monitoring/consumption/user/{idul lui}`, cu `path.equals(...)`, la fel ca regulile din A1.
 - `test/.../AccessPolicyTest.java` (**modificat**): testul `clientCanReadOnlyOwnConsumption`. Propriul id e permis. Id-ul altuia, alte căi, `DELETE` și lipsa id-ului sunt refuzate. ADMIN poate tot.
 
 ### `user_management`
 - `pom.xml` (**modificat**): dependența `spring-kafka`.
 - `kafka/SyncEventPublisher.java` (**nou**): transformă evenimentul în JSON și îl trimite în `sync-events` cu `KafkaTemplate`, apoi **așteaptă confirmarea** (`.get()`). Dacă Kafka nu răspunde, aruncă `CustomException` cu 503.
-- `services/PersonService.java` (**modificat**): `insert` publică `USER_CREATED`, iar `delete` publică `USER_DELETED`, ambele în `@Transactional`, ca eroarea Kafka să anuleze modificarea din DB. Apelurile REST către device-service au dispărut. Ștergerea login-ului (REST la auth-service) a rămas.
-- `controllers/PersonController.java` (**modificat**): doar textele Swagger (503 = Kafka indisponibil).
+- `kafka/SyncEventListener.java` (**nou**): `@KafkaListener` pe `sync-events` (grupul `user-service`). La `USER_CREATED` cu profil apelează `insert`. Restul evenimentelor le ignoră.
+- `services/PersonService.java` (**modificat**):
+  - `insert(SyncEvent)` salvează persoana cu id-ul din eveniment; dacă există deja, sare peste ea. Nu publică nimic;
+  - `delete` șterge persoana și publică `USER_DELETED` în `@Transactional`, ca eroarea Kafka să anuleze ștergerea;
+  - nu mai există niciun apel REST (nici la device-service, nici la auth-service).
+- `entities/Person.java` (**modificat**): id-ul nu mai e generat, vine din eveniment (același ca în auth-service). `@Column(length = 16)` pentru baza H2 din teste.
+- `controllers/PersonController.java` (**modificat**): a dispărut `POST /person` (utilizatorii se creează doar prin `/auth/register`). Au rămas GET, PUT, DELETE.
+- `UsersApplication.java` (**modificat**): a dispărut bean-ul `RestTemplate`.
 - `application.properties` (**modificat**):
   - adresa Kafka;
   - timeout-urile producătorului de 10 s în loc de 2 minute. Așa un mesaj anulat nu mai poate fi livrat mai târziu de un retry;
-  - a dispărut `services.device.url`.
-- `test/.../PersonServiceIntegrationTests.java` (**modificat**): `@MockBean SyncEventPublisher`, pentru că Kafka nu rulează în teste.
+  - `group-id = user-service` și `earliest`;
+  - au dispărut `services.device.url` și `services.auth.url`.
+- `test/.../PersonServiceIntegrationTests.java` (**modificat**): `@MockBean SyncEventPublisher`, pentru că Kafka nu rulează în teste. Testează `insert` din eveniment (id-ul se păstrează, același eveniment de două ori = o singură persoană).
+- `test/.../PersonControllerUnitTest.java` (**modificat**): validarea la `PUT` (vârstă < 18, adresă lipsă → 400) și `POST /person` → 405.
+- `test/resources/application-test.properties` (**modificat**): `spring.kafka.listener.auto-startup=false` (listenerul nu pornește în teste).
 
 ### `device_management`
 - `pom.xml` (**modificat**): `spring-kafka`.
@@ -387,7 +447,9 @@ Clasificări uzuale:
 - `docker-compose.yml` (**modificat**):
   - serviciile `kafka` (listeners INTERNAL/EXTERNAL, healthcheck), `monitoring-db` și `monitoring-service` (labels Traefik cu `jwt-auth` și strip `/monitoring`, plus router public pentru Swagger);
   - volumul `monitoring-pgdata`;
-  - `KAFKA_BOOTSTRAP_SERVERS` și `depends_on: kafka` la user-service și device-service.
+  - `KAFKA_BOOTSTRAP_SERVERS` și `depends_on: kafka` la auth-service, user-service și device-service;
+  - au dispărut `USER_SERVICE_URL` (auth-service) și `AUTH_SERVICE_URL` (user-service).
+- `frontend/src/app/pages/admin-users.component.ts` (**modificat**): după „New user” așteaptă 500 ms înainte să reîncarce lista (persoana apare prin Kafka).
 - `README.md` (**modificat**): arhitectura cu Kafka, topicurile, sincronizarea, rularea simulatorului, URL-uri, porturi, exemple curl.
 - `docs/deployment.puml` + `docs/deployment.png` (**modificat**): diagrama UML de deployment cu `kafka` (cele două topicuri), `monitoring-service`, `monitoring-db` și simulatorul pe gazdă.
 - `db/monitoring_sd.sql` (**nou**): `pg_dump` al bazei de monitorizare: dispozitivele seed și o zi simulată (2026-11-21) pentru *Fridge*-ul lui ion.
@@ -402,10 +464,21 @@ Clasificări uzuale:
   - un singur topic servește mai multe servicii (câte un consumer group pentru fiecare);
   - e făcut pentru fluxuri mari de date de la senzori.
   - Dezavantaj: rutarea e mai simplă decât la RabbitMQ.
-- **De ce ștergerea login-ului (auth-service) a rămas REST?**
-  - PDF-ul cere evenimente doar pentru serviciile care țin copii ale utilizatorilor/dispozitivelor (device, monitoring);
-  - login-ul e o problemă de securitate: vrem să știm **imediat** dacă ștergerea a reușit (altfel 503 și persoana rămâne), nu „cândva”;
-  - crearea login-ului e oricum request-response (auth are nevoie de id-ul persoanei înapoi), deci REST e firesc acolo.
+- **De ce nu există HTTP direct între auth-service și user-service?**
+  - în diagrama conceptuală din PDF, Authorization Service și User Management sunt legate **doar** de
+    Synchronization Broker;
+  - fără apeluri directe, serviciile nu depind unul de altul: dacă user-service e oprit, Register merge în continuare,
+    iar persoana se creează când user-service pornește (mesajul așteaptă în Kafka);
+  - auth-service nu mai are nevoie de id-ul înapoi de la user-service, pentru că **îl generează el** (UUID) și îl trimite
+    în eveniment. user-service îl folosește ca cheie (`Person.id` nu mai e generat).
+- **Consistență eventuală la Register:** `/auth/register` răspunde imediat ce login-ul e salvat și evenimentul e în
+  Kafka. Persoana apare în user-service câteva milisecunde mai târziu. De aceea pagina de admin așteaptă 500 ms înainte
+  să reîncarce lista de utilizatori. Login-ul funcționează imediat (e în auth-service).
+- **Consistență eventuală la ștergere:** login-ul dispare câteva milisecunde după ce `DELETE` răspunde 204.
+  Un token deja emis rămâne valid până expiră (60 min), la fel ca înainte.
+- **Evenimente vechi:** grupurile noi `auth-service` și `user-service` citesc topicul de la început (`earliest`).
+  `USER_CREATED`-urile de dinainte (publicate de user-service, doar cu id) nu au profil, deci user-service le sare
+  („USER_CREATED without a profile, skipped”).
 - **De ce `userId` în URL-ul de consum?** Ca `AccessPolicy` să compare exact calea cu id-ul din token (`path.equals`),
   ca în A1. Gateway-ul nu știe ce dispozitive are cineva, așa că monitoring-service verifică în tabela lui locală
   dacă dispozitivul e al acelui utilizator.
@@ -433,9 +506,9 @@ Clasificări uzuale:
 > nicio fereastră WSL, distribuția se oprește și oprește și containerele.
 
 1. `docker compose up --build -d`, apoi `docker compose ps` (toate „Up”, Kafka și DB-urile „healthy”).
-2. Ține deschise logurile: `docker compose logs -f user-service device-service monitoring-service`.
-3. Creează un client (Register) și arată `Published sync event: USER_CREATED` (user-service) și `Received sync event` +
-   `was added to app_user` (device-service). În DB:
+2. Ține deschise logurile: `docker compose logs -f auth-service user-service device-service monitoring-service`.
+3. Creează un client (Register) și arată `Published sync event: USER_CREATED` (auth-service), `Person … was inserted`
+   (user-service) și `Received sync event` + `was added to app_user` (device-service). În DB:
    `docker exec device-postgres psql -U postgres -d device_sd -c "SELECT encode(id,'hex') FROM app_user;"`
 4. Ca admin, creează un dispozitiv pentru el și arată `DEVICE_CREATED` + `saved with owner` (monitoring-service).
    Copiază id-ul din coloana **Id**.
@@ -484,7 +557,7 @@ http://localhost:8085. Clusterul se numește `local`.
    după ce creez un utilizator sau un dispozitiv (`USER_CREATED`, `DEVICE_CREATED`).
 3. **Partiții și offseturi** – în tab-ul **Overview** al topicului: numărul de partiții, iar pentru fiecare partiție
    primul și ultimul offset (câte mesaje are).
-4. **Consumer groups** – meniul **Consumers**: grupurile `monitoring-service` și `device-service`, starea `STABLE`,
+4. **Consumer groups** – meniul **Consumers**: grupurile `auth-service`, `user-service`, `device-service` și `monitoring-service`, starea `STABLE`,
    membrii activi și, pe fiecare partiție, offsetul confirmat și **lag**-ul (câte mesaje nu au fost încă citite).
    Demo util: opresc `monitoring-service`, trimit mesaje cu simulatorul → lag-ul crește; îl repornesc → lag-ul
    revine la 0, adică nu s-a pierdut nimic.

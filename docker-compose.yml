@@ -138,15 +138,18 @@ services:
       - JWT_SECRET=${JWT_SECRET:-dev-only-secret-change-me-0123456789abcdef}
       - ADMIN_USERNAME=${ADMIN_USERNAME:-admin}
       - ADMIN_PASSWORD=${ADMIN_PASSWORD:-admin}
-      - USER_SERVICE_URL=http://user-service:8080
+      # no URL of user-service: register/delete are synchronized only through the Kafka topic sync-events
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
     depends_on:
       auth-db:
+        condition: service_healthy
+      kafka:
         condition: service_healthy
     networks:
       - app-network
     labels:
       - traefik.enable=true
-      # only login/register are public; /validate and /credentials stay internal
+      # only login/register are public; /validate stays internal
       - traefik.http.routers.auth.rule=Path(`/auth/login`) || Path(`/auth/register`)
       - traefik.http.routers.auth.entrypoints=web
       - traefik.http.routers.auth.middlewares=auth-strip
@@ -171,7 +174,6 @@ services:
       - DB_USER=postgres
       - DB_PASSWORD=root
       - DB_DBNAME=user_sd
-      - AUTH_SERVICE_URL=http://auth-service:8083
       - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
     depends_on:
       user-db:

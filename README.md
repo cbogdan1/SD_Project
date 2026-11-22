@@ -22,10 +22,13 @@ Browser ──► Traefik :80 ──┬─ /auth/login, /auth/register ───
 
 Kafka (one broker, KRaft):
   simulator (host) ──► localhost:9092 ── topic device-measurements ──► monitoring-service (group monitoring-service)
-  user-service   ──┐
-                   ├─► kafka:29092 ──── topic sync-events ──┬────────► device-service     (group device-service: USER_*)
-  device-service ──┘                                        └────────► monitoring-service (group monitoring-service: DEVICE_*, USER_DELETED)
+  auth-service   ──┐ USER_CREATED                            ┌───────► auth-service       (group auth-service: USER_DELETED)
+  user-service   ──┼─► kafka:29092 ──── topic sync-events ───┼───────► user-service       (group user-service: USER_CREATED)
+  device-service ──┘ USER_DELETED, DEVICE_*                  ├───────► device-service     (group device-service: USER_*)
+                                                             └───────► monitoring-service (group monitoring-service: DEVICE_*, USER_DELETED)
 ```
+
+auth-service and user-service never call each other over HTTP: they are connected only through `sync-events`.
 
 UML deployment diagram: [`docs/deployment.png`](docs/deployment.png) (source: [`docs/deployment.puml`](docs/deployment.puml)).
 
@@ -33,8 +36,8 @@ UML deployment diagram: [`docs/deployment.png`](docs/deployment.png) (source: [`
 
 | Service | Module | Responsibility |
 |---|---|---|
-| `auth-service` | `services/auth_management` | `/login`, `/register`, issues JWTs (`role`, `userId`), `/validate` for Traefik ForwardAuth |
-| `user-service` | `services/user_management` | CRUD on persons (`/person`): id, username, name, address, age. Publishes `USER_CREATED` / `USER_DELETED` |
+| `auth-service` | `services/auth_management` | `/login`, `/register`, issues JWTs (`role`, `userId`), `/validate` for Traefik ForwardAuth. Publishes `USER_CREATED` (with the profile), consumes `USER_DELETED` |
+| `user-service` | `services/user_management` | Read/update/delete persons (`/person`): id, username, name, address, age. Consumes `USER_CREATED`, publishes `USER_DELETED` |
 | `device-service` | `services/device_management` | CRUD on devices (`/device`): id, name, description, address, max consumption, owner. Keeps the user ids in a local `app_user` table (from `USER_*` events). Publishes `DEVICE_CREATED` / `DEVICE_UPDATED` / `DEVICE_DELETED` |
 | `monitoring-service` | `services/monitoring_management` | Consumes the measurements and adds them to hourly totals. Keeps a local `device` table (id + owner, from `DEVICE_*` events). `GET /consumption/user/{userId}?deviceId=…&date=…` |
 | `kafka` | image `apache/kafka:3.9.1` | Message broker, KRaft mode (no ZooKeeper), one broker. Topics `device-measurements` and `sync-events` |
@@ -55,14 +58,14 @@ UML deployment diagram: [`docs/deployment.png`](docs/deployment.png) (source: [`
      `GET /monitoring/consumption/user/{ownId}?deviceId=…&date=…`. For the last one, monitoring-service also checks
      that the device belongs to that user (**403** otherwise).
 
-Only `/auth/login` and `/auth/register` are routed publicly. `/validate` and `/credentials` are reachable only on the internal Docker network. The backends have no host ports, so the gateway is the only way in.
+Only `/auth/login` and `/auth/register` are routed publicly. `/validate` is reachable only on the internal Docker network. The backends have no host ports, so the gateway is the only way in.
 
 ### Asynchronous communication (Kafka)
 
 | Topic | Producer(s) | Consumer group(s) | Message value (JSON text) |
 |---|---|---|---|
 | `device-measurements` | simulator | `monitoring-service` | `{"timestamp":"2026-11-22T18:40:00","device_id":"d1eebc99-…","measurement_value":0.1234}` |
-| `sync-events` | user-service, device-service | `device-service`, `monitoring-service` | `{"type":"DEVICE_CREATED","id":"<device id>","userId":"<owner id>"}` |
+| `sync-events` | auth-service, user-service, device-service | `auth-service`, `user-service`, `device-service`, `monitoring-service` | `{"type":"DEVICE_CREATED","id":"<device id>","userId":"<owner id>"}`, `{"type":"USER_CREATED","id":"<user id>","username":"ion","name":"Ion Popescu","address":"…","age":22}` |
 
 - Both topics have 1 partition. Kafka creates them on first use.
 - Every service reads with its **own consumer group**, so every service gets every message (publish-subscribe).
@@ -77,18 +80,26 @@ Only `/auth/login` and `/auth/register` are routed publicly. `/validate` and `/c
 The device DB keeps a local table `app_user(id)` with only the ids of the users. `device.user_id` is a foreign key
 to it (`ON DELETE SET NULL`): one user has many devices. The monitoring DB keeps a local `device(id, user_id)` table.
 
-- **Create a user** (register or admin "New user"): auth-service calls user-service `POST /person` (REST, because it
-  needs the new id back). user-service saves the person and publishes `USER_CREATED`. device-service consumes it and
-  inserts the id into `app_user`. Then auth-service stores the credential (hashed password) linked to that `userId`.
+- **Create a user** (register or admin "New user"):
+  1. auth-service validates the request (name and address required, age ≥ 18), generates the user id (UUID), checks
+     that the username is free and saves the credential (hashed password).
+  2. It publishes `USER_CREATED` with the id and the profile (username, name, address, age).
+  3. user-service consumes it and inserts the person with that exact id. device-service inserts the id into `app_user`.
+
+  The person appears a few milliseconds after `/auth/register` returns (eventual consistency). The admin page waits
+  500 ms before it reloads the user list. There is no `POST /person` anymore.
+- **Seeded admin:** on every start auth-service creates the `admin` credential if it is missing, then publishes
+  `USER_CREATED` for it (name `Administrator`). The consumers skip a user they already have, so the admin has a
+  person and an `app_user` row like any other user, also on databases created before this change.
 - **Assign a device:** device-service checks that the owner id exists in its own `app_user` table (no call to
   user-service). Unknown id → **404**.
 - **Create / update / delete a device:** device-service publishes `DEVICE_CREATED` / `DEVICE_UPDATED` /
   `DEVICE_DELETED` with the device id and its owner. monitoring-service inserts, updates or deletes the device in its
   own `device` table. On delete, the database also deletes the device's hourly rows (`ON DELETE CASCADE`).
 - **Delete a user:**
-  1. user-service deletes the login in auth-service with `DELETE /credentials/user/{id}`. This call stays REST
-     because we must know at once that the login is gone.
-  2. user-service deletes the person and publishes `USER_DELETED`.
+  1. user-service deletes the person and publishes `USER_DELETED`.
+  2. auth-service deletes the credential, so the user cannot log in anymore. An already issued JWT stays valid
+     until it expires (at most 60 minutes).
   3. device-service deletes the id from `app_user` with one direct `DELETE`, and the foreign key unassigns that user's
      devices. monitoring-service also sets the owner to `NULL` on those devices.
 - **Kafka down:** the services wait for Kafka to confirm every event inside `@Transactional`. If Kafka cannot be
@@ -237,7 +248,7 @@ TOKEN=$(curl -s -H 'Content-Type: application/json' -d '{"username":"admin","pas
 curl -i http://localhost/users/person                                  # 401, no token
 curl -i -H "Authorization: Bearer $TOKEN" http://localhost/users/person # 200
 
-# register a client (creates person + credential), returns the userId
+# register a client (credential now, person a few ms later via USER_CREATED), returns the userId
 curl -s -H 'Content-Type: application/json' \
   -d '{"username":"ana","password":"pass1","name":"Ana","address":"Str 1","age":18}' \
   http://localhost/auth/register

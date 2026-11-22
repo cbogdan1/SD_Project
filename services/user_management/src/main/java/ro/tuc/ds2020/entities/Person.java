@@ -1,6 +1,5 @@
 package ro.tuc.ds2020.entities;
 
-import org.hibernate.annotations.GenericGenerator;
 import org.hibernate.annotations.Type;
 
 import javax.persistence.*;
@@ -13,10 +12,11 @@ public class Person  implements Serializable{
 
     private static final long serialVersionUID = 1L;
 
+    // same id as the login in auth-service (it comes in the USER_CREATED event), so it is not generated here
     @Id
-    @GeneratedValue(generator = "uuid2")
-    @GenericGenerator(name = "uuid2", strategy = "uuid2")
     @Type(type = "uuid-binary")
+    // a UUID is 16 bytes; without a length the H2 test DB would make a zero-padded binary(255) column
+    @Column(length = 16)
     private UUID id;
 
     // same username as the login in auth-service
@@ -36,7 +36,8 @@ public class Person  implements Serializable{
     public Person() {
     }
 
-    public Person(String username, String name, String address, int age) {
+    public Person(UUID id, String username, String name, String address, int age) {
+        this.id = id;
         this.username = username;
         this.name = name;
         this.address = address;

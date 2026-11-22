@@ -50,7 +50,7 @@
             <artifactId>h2</artifactId>
             <scope>runtime</scope>
         </dependency>
-        <!-- Kafka producer: publishes USER_CREATED / USER_DELETED (version comes from the Spring Boot parent) -->
+        <!-- Kafka: consumes USER_CREATED, publishes USER_DELETED (version comes from the Spring Boot parent) -->
         <dependency>
             <groupId>org.springframework.kafka</groupId>
             <artifactId>spring-kafka</artifactId>

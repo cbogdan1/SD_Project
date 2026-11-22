@@ -2,10 +2,12 @@ package ro.tuc.auth.dtos;
 
 import ro.tuc.auth.entities.Role;
 
+import javax.validation.constraints.Min;
 import javax.validation.constraints.NotBlank;
 import javax.validation.constraints.Size;
 
-// Credentials plus the profile fields forwarded to user-service
+// Credentials plus the profile, which travels to user-service inside the USER_CREATED event.
+// The profile is validated here, because user-service has no chance to reject an event.
 public class RegisterRequest {
 
     @NotBlank
@@ -19,6 +21,8 @@ public class RegisterRequest {
     private String name;
     @NotBlank
     private String address;
+    // a missing age is 0, so it is rejected too
+    @Min(value = 18, message = "must be at least 18")
     private int age;
 
     public String getUsername() {

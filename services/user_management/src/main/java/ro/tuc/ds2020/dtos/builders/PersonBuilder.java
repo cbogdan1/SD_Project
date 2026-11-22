@@ -18,11 +18,4 @@ public class PersonBuilder {
         dto.setUsername(person.getUsername());
         return dto;
     }
-
-    public static Person toEntity(PersonDetailsDTO personDetailsDTO) {
-        return new Person(personDetailsDTO.getUsername(),
-                personDetailsDTO.getName(),
-                personDetailsDTO.getAddress(),
-                personDetailsDTO.getAge());
-    }
 }

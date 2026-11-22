@@ -4,7 +4,8 @@ import org.junit.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.test.context.jdbc.Sql;
-import org.springframework.web.client.RestTemplate;
+import ro.tuc.common.events.SyncEvent;
+import ro.tuc.common.events.SyncEventType;
 import ro.tuc.ds2020.Ds2020TestConfig;
 import ro.tuc.ds2020.dtos.PersonDTO;
 import ro.tuc.ds2020.dtos.PersonDetailsDTO;
@@ -22,10 +23,6 @@ public class PersonServiceIntegrationTests extends Ds2020TestConfig {
     @Autowired
     PersonService personService;
 
-    // auth-service does not run in tests: the mock makes the call to it do nothing
-    @MockBean
-    RestTemplate restTemplate;
-
     // Kafka does not run in tests: the mock makes publish() do nothing
     @MockBean
     SyncEventPublisher syncEventPublisher;
@@ -37,24 +34,33 @@ public class PersonServiceIntegrationTests extends Ds2020TestConfig {
     }
 
     @Test
-    public void testInsertCorrectWithGetById() {
-        PersonDetailsDTO p = new PersonDetailsDTO("John", "Somewhere Else street", 22);
-        p.setUsername("john");
-        UUID insertedID = personService.insert(p);
+    public void testInsertKeepsTheEventIdWithGetById() {
+        UUID id = UUID.randomUUID();
+        personService.insert(userCreated(id));
 
-        PersonDetailsDTO insertedPerson = new PersonDetailsDTO(insertedID, p.getName(),p.getAddress(), p.getAge());
-        PersonDetailsDTO fetchedPerson = personService.findPersonById(insertedID);
+        PersonDetailsDTO expected = new PersonDetailsDTO(id, "John", "Somewhere Else street", 22);
+        PersonDetailsDTO fetched = personService.findPersonById(id);
 
-        assertEquals("Test Inserted Person", insertedPerson, fetchedPerson);
+        assertEquals("Test Inserted Person", expected, fetched);
+        assertEquals("Test Inserted Username", "john", fetched.getUsername());
     }
 
     @Test
-    public void testInsertCorrectWithGetAll() {
-        PersonDetailsDTO p = new PersonDetailsDTO("John", "Somewhere Else street", 22);
-        p.setUsername("john");
-        personService.insert(p);
+    public void testInsertSameEventTwiceKeepsOnePerson() {
+        UUID id = UUID.randomUUID();
+        personService.insert(userCreated(id));
+        personService.insert(userCreated(id));
 
         List<PersonDTO> personDTOList = personService.findPersons();
         assertEquals("Test Inserted Persons", 2, personDTOList.size());
+    }
+
+    private static SyncEvent userCreated(UUID id) {
+        SyncEvent event = new SyncEvent(SyncEventType.USER_CREATED, id, null);
+        event.setUsername("john");
+        event.setName("John");
+        event.setAddress("Somewhere Else street");
+        event.setAge(22);
+        return event;
     }
 }

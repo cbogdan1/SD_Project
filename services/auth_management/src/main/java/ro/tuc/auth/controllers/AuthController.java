@@ -39,12 +39,12 @@ public class AuthController {
         return new ResponseEntity<>(authService.login(request), HttpStatus.OK);
     }
 
-    @Operation(summary = "Register a user: creates the profile in user-service and the login here")
+    @Operation(summary = "Register a user: saves the login here and publishes USER_CREATED (with the profile) on Kafka")
     @ApiResponse(responseCode = "201", description = "User registered, returns the new user id")
-    @ApiResponse(responseCode = "400", description = "Invalid data (e.g. short password, age under 18)")
+    @ApiResponse(responseCode = "400", description = "Invalid data (e.g. short password, missing name/address, age under 18)")
     @ApiResponse(responseCode = "403", description = "Role ADMIN requested without an admin token")
     @ApiResponse(responseCode = "409", description = "Username already exists")
-    @ApiResponse(responseCode = "503", description = "user-service or device-service not reachable")
+    @ApiResponse(responseCode = "503", description = "Kafka not reachable, user not saved")
     @PostMapping(value = EndpointPaths.REGISTER)
     public ResponseEntity<UUID> register(@Valid @RequestBody RegisterRequest request,
                                          @RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String authorization) {
@@ -73,14 +73,5 @@ public class AuthController {
                 .header("X-User-Id", claims.getUserId().toString())
                 .header("X-User-Role", claims.getRole().name())
                 .build();
-    }
-
-    // Internal only: Traefik does not route /credentials, user-service calls it directly on the Docker network
-    @Operation(summary = "Delete the login of a user (internal, called by user-service)")
-    @ApiResponse(responseCode = "204", description = "Login deleted")
-    @DeleteMapping(value = EndpointPaths.CREDENTIALS + EndpointPaths.USER_ID)
-    public ResponseEntity<Void> deleteCredentials(@PathVariable("userId") UUID userId) {
-        authService.deleteByUserId(userId);
-        return new ResponseEntity<>(HttpStatus.NO_CONTENT);
     }
 }
