@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <parent>
+        <groupId>ro.tuc</groupId>
+        <artifactId>ds-2020-parent</artifactId>
+        <version>0.0.1-SNAPSHOT</version>
+    </parent>
+    <artifactId>simulator</artifactId>
+    <name>simulator</name>
+    <description>Device data simulator: a console app (no Spring) that sends measurements to Kafka</description>
+
+    <!-- versions come from the Spring Boot parent -->
+    <dependencies>
+        <!-- plain Kafka client: KafkaProducer -->
+        <dependency>
+            <groupId>org.apache.kafka</groupId>
+            <artifactId>kafka-clients</artifactId>
+        </dependency>
+        <!-- turns a measurement into JSON text -->
+        <dependency>
+            <groupId>com.fasterxml.jackson.core</groupId>
+            <artifactId>jackson-databind</artifactId>
+        </dependency>
+        <!-- the Kafka client logs through SLF4J; this prints only its warnings/errors (simplelogger.properties) -->
+        <dependency>
+            <groupId>org.slf4j</groupId>
+            <artifactId>slf4j-simple</artifactId>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <finalName>simulator</finalName>
+        <plugins>
+            <!-- the same plugin as the services: packs the app and its libraries into one runnable jar -->
+            <plugin>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
+                <configuration>
+                    <mainClass>ro.tuc.simulator.Simulator</mainClass>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
+</project>

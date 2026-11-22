@@ -20,6 +20,7 @@
         <module>services/device_management</module>
         <module>services/auth_management</module>
         <module>services/monitoring_management</module>
+        <module>simulator</module>
     </modules>
 
     <properties>
