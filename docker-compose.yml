@@ -108,6 +108,21 @@ services:
     networks:
       - app-network
 
+  # Kafka UI: web page for browsing Kafka topics, messages and consumer groups (dev/demo tool, not behind Traefik)
+  kafka-ui:
+    image: kafbat/kafka-ui:v1.3.0
+    container_name: kafka-ui
+    ports:
+      - "8085:8080"
+    environment:
+      KAFKA_CLUSTERS_0_NAME: local
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:29092
+    depends_on:
+      kafka:
+        condition: service_healthy
+    networks:
+      - app-network
+
   auth-service:
     # context = project root: the Maven build needs the parent pom.xml and the common module
     build:

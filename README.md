@@ -176,6 +176,7 @@ Device d1eebc99-9c0b-4ef8-bb6d-6bb9bd380a01, hour 2026-11-21T00:00: total is now
 | Swagger UI – auth-service | http://localhost/auth/swagger-ui |
 | OpenAPI JSON | http://localhost/users/v3/api-docs, http://localhost/devices/v3/api-docs, http://localhost/monitoring/v3/api-docs, http://localhost/auth/v3/api-docs |
 | Kafka (for the simulator) | `localhost:9092` |
+| Kafka UI (topics, messages, consumer groups) | http://localhost:8085 |
 
 Swagger is public (no token). To try the protected endpoints: call `POST /login` in the auth-service Swagger
 (or `curl`, see below), copy the `token`, click **Authorize** in the user/device/monitoring Swagger and paste only
@@ -274,4 +275,5 @@ docker compose logs -f user-service device-service monitoring-service | grep -E 
 | 80 | Traefik (app entry point) |
 | 8082 | Traefik dashboard |
 | 9092 | Kafka, for the simulator on the host (containers use `kafka:29092`) |
+| 8085 | Kafka UI (`kafbat/kafka-ui`, connects to `kafka:29092`) |
 | 5432 / 5433 / 5434 / 5435 | user-db / device-db / auth-db / monitoring-db (for local inspection) |

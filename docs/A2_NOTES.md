@@ -466,3 +466,25 @@ Clasificări uzuale:
 - *Cum arată mesajul?* `{"timestamp":"2026-11-22T18:40:00","device_id":"…","measurement_value":0.1234}`. JSON trimis ca text,
   cu cheia = `device_id`.
 - *De ce 24 de valori și nu doar orele cu date?* Ca graficul să aibă mereu axa OX completă (0–23). Orele fără date au 0.
+
+## 9. Kafka UI (vizualizarea Kafka în browser)
+
+**Ce este:** o aplicație web (`kafbat/kafka-ui`, containerul `kafka-ui`) care se conectează la broker prin listenerul
+intern `kafka:29092` și arată tot ce e în Kafka: topicuri, mesaje, partiții, offseturi și consumer groups.
+Este doar un instrument de dezvoltare/demo: nu trece prin Traefik și aplicația nu depinde de el.
+
+**Cum îl deschid:** `docker compose up -d` îl pornește odată cu restul (după ce Kafka e healthy), apoi
+http://localhost:8085. Clusterul se numește `local`.
+
+**Ce arăt la evaluare:**
+1. **Topics** – apar `device-measurements` (date de la simulator) și `sync-events` (sincronizare utilizatori/dispozitive).
+   Topicurile interne (`__consumer_offsets`) se văd dacă bifez *Show Internal Topics*.
+2. **Mesaje** – intru pe `device-measurements` → tab-ul **Messages**: văd fiecare mesaj JSON, cheia (= `device_id`),
+   partiția, offsetul și ora. Pornesc simulatorul și dau refresh: apar mesaje noi. La fel pe `sync-events`
+   după ce creez un utilizator sau un dispozitiv (`USER_CREATED`, `DEVICE_CREATED`).
+3. **Partiții și offseturi** – în tab-ul **Overview** al topicului: numărul de partiții, iar pentru fiecare partiție
+   primul și ultimul offset (câte mesaje are).
+4. **Consumer groups** – meniul **Consumers**: grupurile `monitoring-service` și `device-service`, starea `STABLE`,
+   membrii activi și, pe fiecare partiție, offsetul confirmat și **lag**-ul (câte mesaje nu au fost încă citite).
+   Demo util: opresc `monitoring-service`, trimit mesaje cu simulatorul → lag-ul crește; îl repornesc → lag-ul
+   revine la 0, adică nu s-a pierdut nimic.

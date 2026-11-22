@@ -46,6 +46,8 @@ node "Docker Host" <<device>> {
       queue "sync-events\n(synchronization)" as topicSync
     }
 
+    node "kafka-ui\n(kafbat/kafka-ui)\nhost :8085" <<executionEnvironment>> as kafkaUi
+
     node "auth-db / auth-postgres\n(postgres:15-alpine)" <<executionEnvironment>> as authDbNode {
       artifact "auth_sd schema\n(credential)" <<schema>> as authDb
     }
@@ -65,6 +67,8 @@ node "Docker Host" <<device>> {
 }
 
 browser --> traefik : HTTP :80
+browser --> kafkaUi : HTTP :8085\n(dev tool, not via Traefik)
+kafkaUi --> kafka : Kafka TCP :29092\nbrowse topics, messages, groups
 
 traefik --> frontend : HTTP :80\n/ (everything else)
 traefik --> auth : HTTP :8083\n/auth/login, /auth/register\n+ ForwardAuth /validate
