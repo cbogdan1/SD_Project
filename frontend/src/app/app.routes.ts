@@ -7,7 +7,7 @@ import { AdminUsersComponent } from './pages/admin-users.component';
 import { AdminDevicesComponent } from './pages/admin-devices.component';
 import { MyDevicesComponent } from './pages/my-devices.component';
 
-// Paths must not start with /users, /devices or /auth: Traefik sends those prefixes to the backends, so a refresh would miss the SPA.
+// Paths must not start with /users, /devices, /monitoring or /auth: Traefik sends those prefixes to the backends, so a refresh would miss the SPA.
 export const routes: Routes = [
   { path: 'login', component: LoginComponent },
   { path: 'admin/users', component: AdminUsersComponent, canActivate: [roleGuard('ADMIN')] },
