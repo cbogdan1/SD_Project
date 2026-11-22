@@ -142,9 +142,11 @@ services:
       - DB_PASSWORD=root
       - DB_DBNAME=user_sd
       - AUTH_SERVICE_URL=http://auth-service:8083
-      - DEVICE_SERVICE_URL=http://device-service:8081
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
     depends_on:
       user-db:
+        condition: service_healthy
+      kafka:
         condition: service_healthy
     networks:
       - app-network
@@ -172,8 +174,11 @@ services:
       - DB_USER=postgres
       - DB_PASSWORD=root
       - DB_DBNAME=device_sd
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
     depends_on:
       device-db:
+        condition: service_healthy
+      kafka:
         condition: service_healthy
     networks:
       - app-network

@@ -50,6 +50,11 @@
             <artifactId>h2</artifactId>
             <scope>runtime</scope>
         </dependency>
+        <!-- Kafka producer: publishes USER_CREATED / USER_DELETED (version comes from the Spring Boot parent) -->
+        <dependency>
+            <groupId>org.springframework.kafka</groupId>
+            <artifactId>spring-kafka</artifactId>
+        </dependency>
         <!-- Swagger UI + OpenAPI docs (1.x is the line for Spring Boot 2) -->
         <dependency>
             <groupId>org.springdoc</groupId>

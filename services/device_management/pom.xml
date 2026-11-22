@@ -41,6 +41,11 @@
             <groupId>org.flywaydb</groupId>
             <artifactId>flyway-core</artifactId>
         </dependency>
+        <!-- Kafka: consumes USER_* events, publishes DEVICE_* events (version comes from the Spring Boot parent) -->
+        <dependency>
+            <groupId>org.springframework.kafka</groupId>
+            <artifactId>spring-kafka</artifactId>
+        </dependency>
         <!-- Swagger UI + OpenAPI docs (1.x is the line for Spring Boot 2) -->
         <dependency>
             <groupId>org.springdoc</groupId>

@@ -4,11 +4,14 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import ro.tuc.common.events.SyncEvent;
+import ro.tuc.common.events.SyncEventType;
 import ro.tuc.common.handlers.exceptions.model.ResourceNotFoundException;
 import ro.tuc.devices.dtos.DeviceDTO;
 import ro.tuc.devices.dtos.builders.DeviceBuilder;
 import ro.tuc.devices.entities.AppUser;
 import ro.tuc.devices.entities.Device;
+import ro.tuc.devices.kafka.SyncEventPublisher;
 import ro.tuc.devices.repositories.AppUserRepository;
 import ro.tuc.devices.repositories.DeviceRepository;
 
@@ -21,10 +24,13 @@ public class DeviceService {
     private static final Logger LOGGER = LoggerFactory.getLogger(DeviceService.class);
     private final DeviceRepository deviceRepository;
     private final AppUserRepository appUserRepository;
+    private final SyncEventPublisher syncEventPublisher;
 
-    public DeviceService(DeviceRepository deviceRepository, AppUserRepository appUserRepository) {
+    public DeviceService(DeviceRepository deviceRepository, AppUserRepository appUserRepository,
+                         SyncEventPublisher syncEventPublisher) {
         this.deviceRepository = deviceRepository;
         this.appUserRepository = appUserRepository;
+        this.syncEventPublisher = syncEventPublisher;
     }
 
     public List<DeviceDTO> findDevices() {
@@ -37,13 +43,21 @@ public class DeviceService {
         return DeviceBuilder.toDeviceDTO(getOrThrow(id));
     }
 
+    // In insert, update and delete: if Kafka is down, publish() throws and @Transactional rolls back the change,
+    // so device-service and monitoring-service never disagree about a device.
+
+    /** Saves the device, then publishes DEVICE_CREATED (monitoring-service adds it to its own device table). */
+    @Transactional
     public UUID insert(DeviceDTO dto) {
         checkUserExists(dto.getUserId());
         Device device = deviceRepository.save(DeviceBuilder.toEntity(dto));
         LOGGER.debug("Device with id {} was inserted in db", device.getId());
+        syncEventPublisher.publish(new SyncEvent(SyncEventType.DEVICE_CREATED, device.getId(), device.getUserId()));
         return device.getId();
     }
 
+    /** Also used to assign/unassign a device. DEVICE_UPDATED tells monitoring-service the (new) owner. */
+    @Transactional
     public DeviceDTO update(UUID id, DeviceDTO dto) {
         Device device = getOrThrow(id);
         checkUserExists(dto.getUserId());
@@ -52,11 +66,16 @@ public class DeviceService {
         device.setAddress(dto.getAddress());
         device.setMaxEnergyConsumption(dto.getMaxEnergyConsumption());
         device.setUserId(dto.getUserId());
-        return DeviceBuilder.toDeviceDTO(deviceRepository.save(device));
+        Device saved = deviceRepository.save(device);
+        syncEventPublisher.publish(new SyncEvent(SyncEventType.DEVICE_UPDATED, id, saved.getUserId()));
+        return DeviceBuilder.toDeviceDTO(saved);
     }
 
+    /** Deletes the device, then publishes DEVICE_DELETED (monitoring-service deletes it and its consumption). */
+    @Transactional
     public void delete(UUID id) {
         deviceRepository.delete(getOrThrow(id));
+        syncEventPublisher.publish(new SyncEvent(SyncEventType.DEVICE_DELETED, id, null));
     }
 
     public List<DeviceDTO> findDevicesByUser(UUID userId) {
@@ -65,17 +84,17 @@ public class DeviceService {
                 .collect(Collectors.toList());
     }
 
-    /** Called by user-service after a user is created: saves the user id in the local app_user table. */
+    /** USER_CREATED event (sent by user-service): saves the user id in the local app_user table. */
     public void addUser(UUID userId) {
         appUserRepository.save(new AppUser(userId));
-        LOGGER.debug("User {} was added to app_user", userId);
+        LOGGER.info("User {} was added to app_user", userId);
     }
 
-    /** Called by user-service when a user is deleted. The FK (ON DELETE SET NULL) unassigns the user's devices. */
+    /** USER_DELETED event: deletes the user id. The FK (ON DELETE SET NULL) unassigns the user's devices. */
     @Transactional
     public void deleteUser(UUID userId) {
         int count = appUserRepository.deleteDirect(userId);
-        LOGGER.debug("Deleted {} row(s) from app_user for user {}", count, userId);
+        LOGGER.info("Deleted {} row(s) from app_user for user {}", count, userId);
     }
 
     // A device can only be assigned to a user that exists in the local app_user table (404 otherwise)

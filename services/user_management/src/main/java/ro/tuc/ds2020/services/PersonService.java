@@ -6,15 +6,19 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestTemplate;
 import ro.tuc.common.EndpointPaths;
+import ro.tuc.common.events.SyncEvent;
+import ro.tuc.common.events.SyncEventType;
 import ro.tuc.common.handlers.exceptions.model.CustomException;
 import ro.tuc.common.handlers.exceptions.model.ResourceNotFoundException;
 import ro.tuc.ds2020.dtos.PersonDTO;
 import ro.tuc.ds2020.dtos.PersonDetailsDTO;
 import ro.tuc.ds2020.dtos.builders.PersonBuilder;
 import ro.tuc.ds2020.entities.Person;
+import ro.tuc.ds2020.kafka.SyncEventPublisher;
 import ro.tuc.ds2020.repositories.PersonRepository;
 
 import java.util.List;
@@ -26,18 +30,18 @@ public class PersonService {
     private static final Logger LOGGER = LoggerFactory.getLogger(PersonService.class);
     private final PersonRepository personRepository;
     private final RestTemplate restTemplate;
+    private final SyncEventPublisher syncEventPublisher;
     private final String authServiceUrl;
-    private final String deviceServiceUrl;
 
     @Autowired
     public PersonService(PersonRepository personRepository,
                          RestTemplate restTemplate,
-                         @Value("${services.auth.url}") String authServiceUrl,
-                         @Value("${services.device.url}") String deviceServiceUrl) {
+                         SyncEventPublisher syncEventPublisher,
+                         @Value("${services.auth.url}") String authServiceUrl) {
         this.personRepository = personRepository;
         this.restTemplate = restTemplate;
+        this.syncEventPublisher = syncEventPublisher;
         this.authServiceUrl = authServiceUrl;
-        this.deviceServiceUrl = deviceServiceUrl;
     }
 
     public List<PersonDTO> findPersons() {
@@ -51,21 +55,15 @@ public class PersonService {
         return PersonBuilder.toPersonDetailsDTO(getOrThrow(id));
     }
 
-    /** Saves the person in the User DB first, then tells device-service to add the id to its app_user table. */
+    /**
+     * Saves the person, then publishes USER_CREATED on Kafka (device-service adds the id to its app_user table).
+     * If Kafka is down, publish() throws and @Transactional rolls back the insert, so the user is not half-created.
+     */
+    @Transactional
     public UUID insert(PersonDetailsDTO personDTO) {
-        Person person = PersonBuilder.toEntity(personDTO);
-        person = personRepository.save(person);
+        Person person = personRepository.save(PersonBuilder.toEntity(personDTO));
         LOGGER.debug("Person with id {} was inserted in db", person.getId());
-        String userPath = EndpointPaths.USER_ID.replace("{userId}", person.getId().toString());
-        try {
-            restTemplate.postForEntity(deviceServiceUrl + EndpointPaths.DEVICE + userPath, null, Void.class);
-        } catch (RestClientException e) {
-            // device-service did not get the id: delete the person again, so both databases stay the same
-            LOGGER.error("Could not add person {} to device-service, person not saved", person.getId(), e);
-            personRepository.delete(person);
-            throw new CustomException("Could not add the user to device-service",
-                    HttpStatus.SERVICE_UNAVAILABLE, Person.class.getSimpleName(), List.of(e.getMessage()));
-        }
+        syncEventPublisher.publish(new SyncEvent(SyncEventType.USER_CREATED, person.getId(), null));
         return person.getId();
     }
 
@@ -79,21 +77,23 @@ public class PersonService {
     }
 
     /**
-     * Removes the login (auth-service) and the user id from app_user (device-service, its devices become unassigned)
-     * first, so a failure there leaves the person intact.
+     * Deletes the login in auth-service first (REST: we must know right away that the user cannot log in anymore),
+     * then the person, then publishes USER_DELETED (device-service removes the id from app_user, so the user's
+     * devices become unassigned). If a step fails, the person is kept and the API returns 503.
      */
+    @Transactional
     public void delete(UUID id) {
         Person person = getOrThrow(id);
         String userPath = EndpointPaths.USER_ID.replace("{userId}", id.toString());
         try {
             restTemplate.delete(authServiceUrl + EndpointPaths.CREDENTIALS + userPath);
-            restTemplate.delete(deviceServiceUrl + EndpointPaths.DEVICE + userPath);
         } catch (RestClientException e) {
-            LOGGER.error("Cleanup for person {} failed, person not deleted", id, e);
-            throw new CustomException("Could not clean up linked credentials/devices",
+            LOGGER.error("Could not delete the login of person {}, person not deleted", id, e);
+            throw new CustomException("Could not delete the login in auth-service",
                     HttpStatus.SERVICE_UNAVAILABLE, Person.class.getSimpleName(), List.of(e.getMessage()));
         }
         personRepository.delete(person);
+        syncEventPublisher.publish(new SyncEvent(SyncEventType.USER_DELETED, id, null));
     }
 
     private Person getOrThrow(UUID id) {

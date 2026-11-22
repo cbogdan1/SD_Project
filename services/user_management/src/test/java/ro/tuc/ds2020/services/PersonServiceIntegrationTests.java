@@ -8,6 +8,7 @@ import org.springframework.web.client.RestTemplate;
 import ro.tuc.ds2020.Ds2020TestConfig;
 import ro.tuc.ds2020.dtos.PersonDTO;
 import ro.tuc.ds2020.dtos.PersonDetailsDTO;
+import ro.tuc.ds2020.kafka.SyncEventPublisher;
 
 import static org.springframework.test.util.AssertionErrors.assertEquals;
 
@@ -21,9 +22,13 @@ public class PersonServiceIntegrationTests extends Ds2020TestConfig {
     @Autowired
     PersonService personService;
 
-    // device-service does not run in tests: the mock makes the call to it do nothing
+    // auth-service does not run in tests: the mock makes the call to it do nothing
     @MockBean
     RestTemplate restTemplate;
+
+    // Kafka does not run in tests: the mock makes publish() do nothing
+    @MockBean
+    SyncEventPublisher syncEventPublisher;
 
     @Test
     public void testGetCorrect() {

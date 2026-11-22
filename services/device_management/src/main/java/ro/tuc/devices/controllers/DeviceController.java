@@ -42,27 +42,30 @@ public class DeviceController {
         return new ResponseEntity<>(deviceService.findDeviceById(id), HttpStatus.OK);
     }
 
-    @Operation(summary = "Create a device (userId is optional: the owner)")
+    @Operation(summary = "Create a device (userId is optional: the owner); publishes DEVICE_CREATED on Kafka")
     @ApiResponse(responseCode = "201", description = "Device created, returns its id")
     @ApiResponse(responseCode = "400", description = "Invalid device data")
     @ApiResponse(responseCode = "404", description = "The owner (userId) does not exist")
+    @ApiResponse(responseCode = "503", description = "Kafka is not reachable, device not saved")
     @PostMapping()
     public ResponseEntity<UUID> insertDevice(@Valid @RequestBody DeviceDTO dto) {
         return new ResponseEntity<>(deviceService.insert(dto), HttpStatus.CREATED);
     }
 
-    @Operation(summary = "Update a device, also used to assign/unassign it to a user")
+    @Operation(summary = "Update a device, also used to assign/unassign it to a user; publishes DEVICE_UPDATED on Kafka")
     @ApiResponse(responseCode = "200", description = "The updated device")
     @ApiResponse(responseCode = "400", description = "Invalid device data")
     @ApiResponse(responseCode = "404", description = "Device or owner (userId) not found")
+    @ApiResponse(responseCode = "503", description = "Kafka is not reachable, device not changed")
     @PutMapping(value = EndpointPaths.ID)
     public ResponseEntity<DeviceDTO> updateDevice(@PathVariable("id") UUID id, @Valid @RequestBody DeviceDTO dto) {
         return new ResponseEntity<>(deviceService.update(id, dto), HttpStatus.OK);
     }
 
-    @Operation(summary = "Delete a device")
+    @Operation(summary = "Delete a device; publishes DEVICE_DELETED on Kafka")
     @ApiResponse(responseCode = "204", description = "Device deleted")
     @ApiResponse(responseCode = "404", description = "Device not found")
+    @ApiResponse(responseCode = "503", description = "Kafka is not reachable, device not deleted")
     @DeleteMapping(value = EndpointPaths.ID)
     public ResponseEntity<Void> deleteDevice(@PathVariable("id") UUID id) {
         deviceService.delete(id);
@@ -76,21 +79,5 @@ public class DeviceController {
         return new ResponseEntity<>(deviceService.findDevicesByUser(userId), HttpStatus.OK);
     }
 
-    // Called by user-service after it creates a user
-    @Operation(summary = "Add a user id to the local app_user table (called by user-service)")
-    @ApiResponse(responseCode = "201", description = "User id saved")
-    @PostMapping(value = EndpointPaths.USER_ID)
-    public ResponseEntity<Void> addUser(@PathVariable("userId") UUID userId) {
-        deviceService.addUser(userId);
-        return new ResponseEntity<>(HttpStatus.CREATED);
-    }
-
-    // Called by user-service when it deletes a user
-    @Operation(summary = "Delete a user id from app_user; the user's devices become unassigned (called by user-service)")
-    @ApiResponse(responseCode = "204", description = "User id deleted")
-    @DeleteMapping(value = EndpointPaths.USER_ID)
-    public ResponseEntity<Void> deleteUser(@PathVariable("userId") UUID userId) {
-        deviceService.deleteUser(userId);
-        return new ResponseEntity<>(HttpStatus.NO_CONTENT);
-    }
+    // The app_user table is no longer filled through REST: SyncEventListener reads USER_CREATED / USER_DELETED from Kafka.
 }
