@@ -28,7 +28,8 @@ public class SyncEventListener {
         this.objectMapper = objectMapper;
     }
 
-    // the consumer group is spring.kafka.consumer.group-id = auth-service (see application.properties)
+    // the consumer group is spring.kafka.consumer.group-id = auth-service
+    //metoda apelata automat cand se publica un mesaj nou pe topic
     @KafkaListener(topics = KafkaTopics.SYNC_EVENTS)
     public void onSyncEvent(String message) {
         SyncEvent event;

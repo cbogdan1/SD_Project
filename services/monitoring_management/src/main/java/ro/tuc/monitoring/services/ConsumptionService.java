@@ -51,7 +51,7 @@ public class ConsumptionService {
         HourlyConsumption hour = hourlyConsumptionRepository.findByDeviceIdAndHourStart(deviceId, hourStart)
                 .orElse(new HourlyConsumption(deviceId, hourStart, 0));
         hour.setEnergyKwh(hour.getEnergyKwh() + measurement.getMeasurementValue());
-        hourlyConsumptionRepository.save(hour);
+        hourlyConsumptionRepository.save(hour); //nou sau update
         LOGGER.info("Device {}, hour {}: total is now {} kWh", deviceId, hourStart, roundKwh(hour.getEnergyKwh()));
     }
 

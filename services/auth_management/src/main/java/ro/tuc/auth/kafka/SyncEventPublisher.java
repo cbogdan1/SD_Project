@@ -21,7 +21,7 @@ public class SyncEventPublisher {
     private final KafkaTemplate<String, String> kafkaTemplate;
     private final ObjectMapper objectMapper;
 
-    public SyncEventPublisher(KafkaTemplate<String, String> kafkaTemplate, ObjectMapper objectMapper) {
+        public SyncEventPublisher(KafkaTemplate<String, String> kafkaTemplate, ObjectMapper objectMapper) {
         this.kafkaTemplate = kafkaTemplate;
         this.objectMapper = objectMapper;
     }
@@ -35,10 +35,11 @@ public class SyncEventPublisher {
         try {
             String json = objectMapper.writeValueAsString(event);
             // the key (the user id) chooses the partition, so all events of one user stay in order
-            kafkaTemplate.send(KafkaTopics.SYNC_EVENTS, event.getId().toString(), json).get();
+            kafkaTemplate.send(KafkaTopics.SYNC_EVENTS, event.getId().toString(), json).get();  // .get() cere confirmare ca mesajul a fost pus pe topic
             LOGGER.info("Published sync event: {}", json);
         } catch (InterruptedException e) {
             // keep the "interrupted" flag of the thread, then fail like for any other error
+            //in caz in care threadul sta in asteptare pe get pt confirmarea de la kafka si aplicatia se opreste trebuie intrerupt threadul
             Thread.currentThread().interrupt();
             throw kafkaUnavailable(event, e);
         } catch (Exception e) {

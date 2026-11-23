@@ -4,10 +4,10 @@ services:
     container_name: reverse-proxy
     command:
       - --api.insecure=true
-      - --providers.docker=true
-      - --providers.docker.exposedbydefault=false
-      - --providers.docker.network=app-network
-      - --entrypoints.web.address=:80
+      - --providers.docker=true # citeste configurarea rutelor din label-urile containerelor Docker
+      - --providers.docker.exposedbydefault=false # ia doar containerele cu traefik.enable=true
+      - --providers.docker.network=app-network # retea pentru comunicarea cu containerele
+      - --entrypoints.web.address=:80  # creeaza intrarea numita "web", care asculta pe portul 80
     ports:
       - "80:80"
       - "8082:8080" # Traefik dashboard
@@ -86,20 +86,25 @@ services:
     ports:
       - "9092:9092" # for the device simulator, which runs on the host (outside Docker)
     environment:
-      KAFKA_NODE_ID: 1
+      KAFKA_NODE_ID: 1   #id server
       KAFKA_PROCESS_ROLES: broker,controller
       KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
-      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER #asigneaza rol de controller pe "usa" CONTROLLER
+      KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL #asigneaza rol de broker pe "usa" INTERNAL
       # INTERNAL = for the containers, EXTERNAL = for the host, CONTROLLER = used by KRaft itself
-      KAFKA_LISTENERS: INTERNAL://:29092,EXTERNAL://:9092,CONTROLLER://:9093
+      #leaga o variabila de un host+port
+      KAFKA_LISTENERS: INTERNAL://:29092,EXTERNAL://:9092,CONTROLLER://:9093 # NUME://HOST:PORT ## configurare interna pe ce
+      #porturi ascutla serverul de kafka
+
       # the address Kafka gives back to each client: containers use kafka:29092, the host uses localhost:9092
       KAFKA_ADVERTISED_LISTENERS: INTERNAL://kafka:29092,EXTERNAL://localhost:9092
+      #configurare externa: ce adresa (host+port) primesc clientii ca sa se conecteze la kafka
       KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: INTERNAL:PLAINTEXT,EXTERNAL:PLAINTEXT,CONTROLLER:PLAINTEXT
-      KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
       # only one broker, so Kafka's internal topics can keep only 1 copy
-      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
-      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
-      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1 # topic-ul intern __consumer_offsets
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1 #  topic-ul intern __transaction_state
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1  # cate copii trebuie sa confirme o scriere în __transaction_state
+      #1 nr de topice( copii)
     healthcheck:
       test: ["CMD-SHELL", "/opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --list"]
       interval: 5s
@@ -148,20 +153,23 @@ services:
     networks:
       - app-network
     labels:
-      - traefik.enable=true
+      - traefik.enable=true #marcheaza container gestionat de Traefik
       # only login/register are public; /validate stays internal
-      - traefik.http.routers.auth.rule=Path(`/auth/login`) || Path(`/auth/register`)
-      - traefik.http.routers.auth.entrypoints=web
+      - traefik.http.routers.auth.rule=Path(`/auth/login`) || Path(`/auth/register`) #pe auth pune rutele /auth/login si /register
+      - traefik.http.routers.auth.entrypoints=web #leaga auth pe protul web (reverse proxyul)
       - traefik.http.routers.auth.middlewares=auth-strip
-      - traefik.http.middlewares.auth-strip.stripprefix.prefixes=/auth
+      - traefik.http.middlewares.auth-strip.stripprefix.prefixes=/auth #sterge /auth din inceputul pathu lui
+      #Controller-ul din Java nu știe de el: e mapat la /login.
+      #Fara strip, auth-service ar primi /auth/login, nu are asa ceva și ar răspunde 404.
       - traefik.http.services.auth.loadbalancer.server.port=8083
       # Swagger UI and the OpenAPI JSON are public (no token needed)
-      - traefik.http.routers.auth-docs.rule=PathPrefix(`/auth/swagger-ui`) || PathPrefix(`/auth/v3/api-docs`)
-      - traefik.http.routers.auth-docs.entrypoints=web
-      - traefik.http.routers.auth-docs.middlewares=auth-strip
+      - traefik.http.routers.auth-docs.rule=PathPrefix(`/auth/swagger-ui`) || PathPrefix(`/auth/v3/api-docs`) #pe auth-docs pune rutele /auth/swagger si /v3/api-docs
+      - traefik.http.routers.auth-docs.entrypoints=web #leaga swagger la reverse proxy
+      - traefik.http.routers.auth-docs.middlewares=auth-strip #face strip ca sa se potriveaza pe pathruile din controller
       # ForwardAuth: Traefik asks auth-service /validate before every /users, /devices and /monitoring request
       - traefik.http.middlewares.jwt-auth.forwardauth.address=http://auth-service:8083/validate
       - traefik.http.middlewares.jwt-auth.forwardauth.authResponseHeaders=X-User-Id,X-User-Role
+      #copiaza headerele cu id-ul si rolul userului din raspunsul /validate in requestul trimis la microserviciu
 
   # no container_name / ports: required so `--scale user-service=N` works; Traefik balances the replicas
   user-service:

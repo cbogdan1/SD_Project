@@ -28,8 +28,8 @@ public class DeviceService {
     /** DEVICE_DELETED: deletes the device and (ON DELETE CASCADE) its hourly consumption. */
     @Transactional
     public void deleteDevice(UUID deviceId) {
-        int count = deviceRepository.deleteDirect(deviceId);
-        LOGGER.info("Deleted {} row(s) from device for device {}", count, deviceId);
+        int count = deviceRepository.deleteDirect(deviceId); // count ca sa verifice daca e sau nu deviceul
+        LOGGER.info("Deleted {} row(s) from device for device {}", count, deviceId); // 0-daca nu e  1 daca e
     }
 
     /** USER_DELETED: the devices of the deleted user become unassigned. */
